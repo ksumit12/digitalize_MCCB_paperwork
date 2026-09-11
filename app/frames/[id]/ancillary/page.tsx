@@ -2,6 +2,7 @@
 
 import { use } from "react";
 import { NextChecklist } from "@/components/NextChecklist";
+import { SignPick } from "@/components/SignPick";
 import { YesNaRow, Screen } from "@/components/ui";
 import { useFrame } from "@/lib/useFrame";
 import type { AncillaryCircuits, AncillaryItem, ChecklistItem } from "@/lib/types";
@@ -70,6 +71,14 @@ export default function AncillaryPage({ params }: { params: Promise<{ id: string
 
   return (
     <Screen title="Lights & wiring" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
+      <div className="rounded-2xl border border-rule bg-white p-3">
+        <p className="mb-2 text-sm font-medium">Who is wiring</p>
+        <SignPick
+          value={initials}
+          onChange={(v) => update((f) => ({ ...f, installerInitials: v, installerName: v }))}
+          placeholder="Initials"
+        />
+      </div>
       <ItemRow
         label="Install combined lighting/power circuit"
         item={a.combinedLightingPowerCircuit}
