@@ -65,8 +65,9 @@ export default function CbsdsPage({
         </Field>
         <Field label="Manufacturer">
           <TextInput
-            value={cbsds.manufacturer}
-            onChange={(e) => patchCbsds({ ...cbsds, manufacturer: e.target.value })}
+            value={frame.manufacturer || "—"}
+            readOnly
+            className="bg-neutral-50"
           />
         </Field>
       </div>

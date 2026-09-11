@@ -9,6 +9,17 @@ import type {
   Frame,
 } from "./types";
 
+function generateId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function item(sign = ""): ChecklistItem {
   return { ticked: false, installerSign: sign };
 }
@@ -56,7 +67,6 @@ function emptyCbsds(label: CbsdsLabel): Cbsds {
     label,
     mountingBoltsTight: false,
     cbsdsSerialNumber: "",
-    manufacturer: "",
     glandPlatesAndGlandsInstalled: false,
     mccbsSelectedPerShopDrawing: false,
     breakerPositions: Array.from({ length: 8 }, (_, i) => emptyBreaker(i + 1)),
@@ -80,7 +90,7 @@ export function createEmptyFrame(opts?: {
   const sign = opts?.installerName?.trim() ?? "";
 
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     stringId: opts?.stringId ?? "",
     installerInitials: opts?.installerInitials ?? "",
     installerName: sign,
@@ -88,6 +98,7 @@ export function createEmptyFrame(opts?: {
     actswFrameId: "",
     moduleFrameSerialNumber: "",
     market: "",
+    manufacturer: "",
     startDate: date,
     startTime: time,
     finishDate: "",

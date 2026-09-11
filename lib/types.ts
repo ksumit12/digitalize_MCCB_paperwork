@@ -2,6 +2,7 @@ export type Market = "INT" | "AUS";
 export type CbsdsLabel = "A" | "B" | "C" | "D";
 export type PassFail = "pass" | "fail" | "";
 export type AmpSetting = 32 | 63 | 100 | "";
+export type Manufacturer = "RN Baker" | "SMBE" | "";
 
 export type ChecklistItem = {
   ticked: boolean;
@@ -29,7 +30,6 @@ export type Cbsds = {
   label: CbsdsLabel;
   mountingBoltsTight: boolean;
   cbsdsSerialNumber: string;
-  manufacturer: string;
   glandPlatesAndGlandsInstalled: boolean;
   mccbsSelectedPerShopDrawing: boolean;
   breakerPositions: BreakerPosition[];
@@ -142,6 +142,7 @@ export type Frame = {
   actswFrameId: string;
   moduleFrameSerialNumber: string;
   market: Market | "";
+  manufacturer: Manufacturer;
   startDate: string;
   startTime: string;
   finishDate: string;

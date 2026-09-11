@@ -57,6 +57,19 @@ export default function InstallPage({ params }: { params: Promise<{ id: string }
             <option value="AUS">AUS</option>
           </select>
         </Field>
+        <Field label="Manufacturer">
+          <select
+            value={frame.manufacturer}
+            onChange={(e) =>
+              update((f) => ({ ...f, manufacturer: e.target.value as typeof f.manufacturer }))
+            }
+            className="w-full rounded-lg border border-rule bg-white px-3 py-2.5"
+          >
+            <option value="">—</option>
+            <option value="RN Baker">RN Baker</option>
+            <option value="SMBE">SMBE</option>
+          </select>
+        </Field>
         <Field label="Start date">
           <TextInput
             type="date"

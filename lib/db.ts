@@ -10,9 +10,15 @@ class FrameDb extends Dexie {
     this.version(1).stores({
       frames: "id, updatedAt, shepherdFrameId, actswFrameId",
     });
-    this.version(2).stores({
-      frames: "id, updatedAt, shepherdFrameId, actswFrameId, stringId",
+    this.version(3).stores({
+      frames: "id, updatedAt, shepherdFrameId, actswFrameId, stringId, manufacturer",
       installers: "initials",
+    }).upgrade((tx) => {
+      tx.table("frames").toCollection().modify((frame) => {
+        if (!frame.manufacturer) {
+          frame.manufacturer = "";
+        }
+      });
     });
   }
 }

@@ -117,10 +117,10 @@ function headerBlock(w: Writer, frame: Frame) {
   w.gap();
 }
 
-function cbsdsBlock(w: Writer, cbsds: Cbsds) {
+function cbsdsBlock(w: Writer, cbsds: Cbsds, frameManufacturer: string) {
   w.line(`Install CBSDS ${cbsds.label} per Shop Drawing`, true);
   w.line(
-    `Mounting bolts tight: ${yn(cbsds.mountingBoltsTight)}    Serial: ${cbsds.cbsdsSerialNumber || "—"}    Mfr: ${cbsds.manufacturer || "—"}`,
+    `Mounting bolts tight: ${yn(cbsds.mountingBoltsTight)}    Serial: ${cbsds.cbsdsSerialNumber || "—"}    Mfr: ${frameManufacturer || "—"}`,
   );
   w.line(
     `Gland plates & glands: ${yn(cbsds.glandPlatesAndGlandsInstalled)}    MCCBs selected per drawing (trip unit & ML pre-installed): ${yn(cbsds.mccbsSelectedPerShopDrawing)}`,
@@ -154,15 +154,15 @@ export async function buildFramePdf(frame: Frame): Promise<Uint8Array> {
   w1.line(`Install C&E Air Sampling Conduit  ${tick(frame.installChecklist.cAndEAirSamplingConduit)}`);
   w1.line(`Install Whip's per Shop Drawing  ${tick(frame.installChecklist.whipsPerShopDrawing)}`);
   w1.rule();
-  cbsdsBlock(w1, frame.cbsds[0]);
-  cbsdsBlock(w1, frame.cbsds[1]);
+  cbsdsBlock(w1, frame.cbsds[0], frame.manufacturer);
+  cbsdsBlock(w1, frame.cbsds[1], frame.manufacturer);
 
   const p2 = doc.addPage([842, 595]);
   const w2 = new Writer(p2, font, bold);
   w2.title("CBSDS C / D & Ancillary Circuits");
   headerBlock(w2, frame);
-  cbsdsBlock(w2, frame.cbsds[2]);
-  cbsdsBlock(w2, frame.cbsds[3]);
+  cbsdsBlock(w2, frame.cbsds[2], frame.manufacturer);
+  cbsdsBlock(w2, frame.cbsds[3], frame.manufacturer);
   w2.rule();
   w2.line("Ancillary circuits", true);
   const a = frame.ancillaryCircuits;
