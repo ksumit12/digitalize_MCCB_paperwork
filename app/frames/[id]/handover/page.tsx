@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { PdfButtons } from "@/components/PdfButtons";
+import { NextChecklist } from "@/components/NextChecklist";
 import { Field, Screen, TextInput } from "@/components/ui";
 import { useFrame } from "@/lib/useFrame";
 
@@ -131,7 +131,7 @@ export default function HandoverPage({ params }: { params: Promise<{ id: string 
           className="min-h-28 w-full rounded-xl border border-rule px-3 py-3"
         />
       </Field>
-      <PdfButtons frame={frame} />
+      <NextChecklist frameId={id} current="handover" />
     </Screen>
   );
 }

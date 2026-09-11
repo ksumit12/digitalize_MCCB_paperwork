@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import { NextChecklist } from "@/components/NextChecklist";
 import { YesNaRow, Screen } from "@/components/ui";
 import { useFrame } from "@/lib/useFrame";
 import type { AncillaryCircuits, AncillaryItem, ChecklistItem } from "@/lib/types";
@@ -190,6 +191,7 @@ export default function AncillaryPage({ params }: { params: Promise<{ id: string
         initials={initials}
         onChange={(v) => setItem("bungsCablePathHoles", v)}
       />
+      <NextChecklist frameId={id} current="ancillary" />
     </Screen>
   );
 }

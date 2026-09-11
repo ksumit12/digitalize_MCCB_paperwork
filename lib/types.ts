@@ -145,6 +145,8 @@ export type Frame = {
   submitted?: boolean;
   installerInitials?: string;
   installerName?: string;
+  testerInitials?: string;
+  testerName?: string;
   shepherdFrameId: string;
   actswFrameId: string;
   moduleFrameSerialNumber: string;

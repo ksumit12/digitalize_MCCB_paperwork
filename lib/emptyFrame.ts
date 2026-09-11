@@ -83,6 +83,8 @@ export function createEmptyFrame(opts?: {
   frameSlot?: string;
   installerInitials?: string;
   installerName?: string;
+  testerInitials?: string;
+  testerName?: string;
 }): Frame {
   const now = new Date();
   const iso = now.toISOString();
@@ -90,6 +92,7 @@ export function createEmptyFrame(opts?: {
   const time = now.toTimeString().slice(0, 5);
   const labels: CbsdsLabel[] = ["A", "B", "C", "D"];
   const sign = opts?.installerName?.trim() ?? "";
+  const testSign = opts?.testerName?.trim() || opts?.testerInitials?.trim() || sign;
 
   return {
     id: generateId(),
@@ -99,6 +102,8 @@ export function createEmptyFrame(opts?: {
     submitted: false,
     installerInitials: opts?.installerInitials ?? "",
     installerName: sign,
+    testerInitials: opts?.testerInitials ?? "",
+    testerName: opts?.testerName ?? "",
     shepherdFrameId: "",
     actswFrameId: "",
     moduleFrameSerialNumber: "",
@@ -143,7 +148,7 @@ export function createEmptyFrame(opts?: {
     },
     electricalTesting: {
       visualInspection: { A: "", B: "", C: "", D: "" },
-      frameIrSign: sign,
+      frameIrSign: testSign,
       perCbsdsIr: {
         A: { readings: emptyIr() },
         B: { readings: emptyIr() },
@@ -151,10 +156,10 @@ export function createEmptyFrame(opts?: {
         D: { readings: emptyIr() },
       },
       perBreakerTest: {
-        A: Array.from({ length: 8 }, () => emptyBreakerTest(sign)),
-        B: Array.from({ length: 8 }, () => emptyBreakerTest(sign)),
-        C: Array.from({ length: 8 }, () => emptyBreakerTest(sign)),
-        D: Array.from({ length: 8 }, () => emptyBreakerTest(sign)),
+        A: Array.from({ length: 8 }, () => emptyBreakerTest(testSign)),
+        B: Array.from({ length: 8 }, () => emptyBreakerTest(testSign)),
+        C: Array.from({ length: 8 }, () => emptyBreakerTest(testSign)),
+        D: Array.from({ length: 8 }, () => emptyBreakerTest(testSign)),
       },
       shuntTripLiveTest: {
         breakerStack1and2: "",

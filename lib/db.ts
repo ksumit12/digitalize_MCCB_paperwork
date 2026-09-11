@@ -4,6 +4,7 @@ import type { Frame, Installer } from "./types";
 export type StringRun = {
   key: string;
   createdAt: string;
+  archivedAt?: string;
 };
 
 class FrameDb extends Dexie {
@@ -48,6 +49,11 @@ class FrameDb extends Dexie {
         if (frame.submitted == null) frame.submitted = false;
       });
     });
+    this.version(6).stores({
+      frames: "id, updatedAt, shepherdFrameId, actswFrameId, stringId, manufacturer, phase, stringKey",
+      installers: "initials",
+      stringRuns: "key, createdAt, archivedAt",
+    });
   }
 }
 
@@ -59,7 +65,8 @@ export function withFrameDefaults(frame: Frame): Frame {
     stringKey: frame.stringKey?.trim() || "1",
     frameSlot: frame.frameSlot || frame.stringId || "",
     stringId: frame.stringId || frame.frameSlot || "",
-    submitted: Boolean(frame.submitted),
+    testerInitials: frame.testerInitials ?? "",
+    testerName: frame.testerName ?? "",
     moduleFrameSerialNumber:
       frame.moduleFrameSerialNumber?.trim() ||
       [frame.stringKey?.trim() || "1", frame.frameSlot || frame.stringId || ""]
@@ -108,18 +115,37 @@ export async function saveInstaller(installer: Installer): Promise<void> {
   await db.installers.put({ initials, name: installer.name.trim() });
 }
 
-export async function listStringKeys(): Promise<string[]> {
-  const runs = await db.stringRuns.toArray();
-  const fromFrames = (await db.frames.toArray()).map((f) => withFrameDefaults(f).stringKey || "1");
-  return [...new Set([...runs.map((r) => r.key), ...fromFrames])].sort((a, b) =>
-    a.localeCompare(b, undefined, { numeric: true }),
-  );
+export async function listInstallers(): Promise<Installer[]> {
+  return db.installers.toArray();
+}
+
+export async function listStringRuns(): Promise<StringRun[]> {
+  return db.stringRuns.toArray();
+}
+
+export async function archiveStringRun(key: string): Promise<void> {
+  const existing = await db.stringRuns.get(key);
+  await db.stringRuns.put({
+    key,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    archivedAt: existing?.archivedAt || new Date().toISOString(),
+  });
+}
+
+export async function unarchiveStringRun(key: string): Promise<void> {
+  const existing = await db.stringRuns.get(key);
+  if (!existing) return;
+  await db.stringRuns.put({ key: existing.key, createdAt: existing.createdAt });
 }
 
 export async function addStringRun(key: string): Promise<void> {
   const trimmed = key.trim();
   if (!trimmed) return;
-  await db.stringRuns.put({ key: trimmed, createdAt: new Date().toISOString() });
+  await db.stringRuns.put({
+    key: trimmed,
+    createdAt: new Date().toISOString(),
+    archivedAt: undefined,
+  });
 }
 
 export async function findFrameBySlot(stringKey: string, frameSlot: string): Promise<Frame | undefined> {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { fillIr, IR_ROWS } from "@/lib/ir";
 import type { IrReadings, PassFail, PolarityTest } from "@/lib/types";
 import { POLARITY_ROWS } from "@/lib/ir";
@@ -23,24 +24,20 @@ export function PassFailPaint({
     onPaint(key, value);
   }
 
+  function drag(e: ReactPointerEvent) {
+    if (!brush.current) return;
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const row = hit?.closest("[data-row-key]") as HTMLElement | null;
+    const key = row?.dataset.rowKey;
+    if (key) onPaint(key, brush.current);
+  }
+
+  function endBrush() {
+    brush.current = null;
+  }
+
   return (
-    <div
-      data-paint
-      className="space-y-2 touch-none"
-      onPointerMove={(e) => {
-        if (!brush.current) return;
-        const hit = document.elementFromPoint(e.clientX, e.clientY);
-        const row = hit?.closest("[data-row-key]") as HTMLElement | null;
-        const key = row?.dataset.rowKey;
-        if (key) onPaint(key, brush.current);
-      }}
-      onPointerUp={() => {
-        brush.current = null;
-      }}
-      onPointerCancel={() => {
-        brush.current = null;
-      }}
-    >
+    <div data-paint className="space-y-2">
       {onPaintAll ? (
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -75,12 +72,13 @@ export function PassFailPaint({
                 type="button"
                 onPointerDown={(e) => {
                   e.preventDefault();
-                  (e.currentTarget.closest("[data-paint]") as HTMLElement | null)?.setPointerCapture(
-                    e.pointerId,
-                  );
+                  e.currentTarget.setPointerCapture(e.pointerId);
                   apply(row.key, opt);
                 }}
-                className={`min-w-[4.5rem] rounded-xl py-3 text-sm font-medium ${
+                onPointerMove={drag}
+                onPointerUp={endBrush}
+                onPointerCancel={endBrush}
+                className={`touch-none min-w-[4.5rem] rounded-xl py-3 text-sm font-medium ${
                   v === opt
                     ? opt === "pass"
                       ? "bg-emerald-600 text-white"

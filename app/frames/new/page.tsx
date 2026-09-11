@@ -2,7 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { lastInstaller, rememberLastInstaller } from "@/lib/crew";
+import { lastInstaller, lastTester, rememberLastInstaller, rememberLastTester } from "@/lib/crew";
+import { PeopleChips } from "@/components/SignPick";
 import {
   findFrameBySlot,
   lookupInstaller,
@@ -23,6 +24,8 @@ function NewFrameForm() {
   const [initials, setInitials] = useState("");
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
+  const [testerInitials, setTesterInitials] = useState("");
+  const [testerName, setTesterName] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -30,6 +33,11 @@ function NewFrameForm() {
     if (last) {
       setInitials(last.initials);
       setName(last.name);
+    }
+    const tester = lastTester();
+    if (tester) {
+      setTesterInitials(tester.initials);
+      setTesterName(tester.name);
     }
   }, []);
 
@@ -91,7 +99,15 @@ function NewFrameForm() {
       ) : null}
 
       <div className="space-y-3">
-        <p className="text-sm font-medium">Who is filling this out?</p>
+        <p className="text-sm font-medium">Who is installing? (MCCB / install checklist)</p>
+        <PeopleChips
+          selected={initials}
+          onPick={(p) => {
+            setInitials(p.initials);
+            setName(p.name);
+            setNameTouched(false);
+          }}
+        />
         <input
           value={initials}
           onChange={(e) => void onInitials(e.target.value)}
@@ -106,6 +122,31 @@ function NewFrameForm() {
             setName(e.target.value);
           }}
           placeholder="Name (change if needed)"
+          className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg"
+        />
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-sm font-medium">Who signs electrical testing? (sparky / supervisor)</p>
+        <p className="text-xs text-neutral-500">Saved from last time. Skip if it is the same person.</p>
+        <PeopleChips
+          selected={testerInitials}
+          onPick={(p) => {
+            setTesterInitials(p.initials);
+            setTesterName(p.name);
+          }}
+        />
+        <input
+          value={testerInitials}
+          onChange={(e) => setTesterInitials(e.target.value.toUpperCase())}
+          placeholder="Sparky initials"
+          autoCapitalize="characters"
+          className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg uppercase"
+        />
+        <input
+          value={testerName}
+          onChange={(e) => setTesterName(e.target.value)}
+          placeholder="Sparky name (optional)"
           className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg"
         />
       </div>
@@ -125,14 +166,24 @@ function NewFrameForm() {
             initials: normalizeInitials(initials) || name.slice(0, 2).toUpperCase(),
             name: name.trim(),
           };
+          const tester = {
+            initials: normalizeInitials(testerInitials) || installer.initials,
+            name: testerName.trim() || installer.name,
+          };
           await saveInstaller(installer);
+          if (tester.initials !== installer.initials || tester.name !== installer.name) {
+            await saveInstaller(tester);
+          }
           rememberLastInstaller(installer);
+          rememberLastTester(tester);
           const frame = createEmptyFrame({
             stringKey: stringKey.trim(),
             frameSlot: slot,
             stringId: slot,
             installerInitials: installer.initials,
             installerName: installer.name,
+            testerInitials: tester.initials,
+            testerName: tester.name,
           });
           await saveFrame(frame);
           router.push(`/frames/${frame.id}/map`);

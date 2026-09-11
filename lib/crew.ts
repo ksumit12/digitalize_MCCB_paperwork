@@ -1,6 +1,7 @@
 import type { Frame, Installer } from "./types";
 
 const LAST_KEY = "mccb-last-installer";
+const LAST_TESTER_KEY = "mccb-last-tester";
 
 export function frameLabel(
   frame: Pick<Frame, "stringKey" | "frameSlot" | "stringId" | "moduleFrameSerialNumber" | "shepherdFrameId">,
@@ -53,6 +54,19 @@ export function rememberLastInstaller(installer: Installer) {
 export function lastInstaller(): Installer | null {
   try {
     const raw = localStorage.getItem(LAST_KEY);
+    return raw ? (JSON.parse(raw) as Installer) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberLastTester(installer: Installer) {
+  localStorage.setItem(LAST_TESTER_KEY, JSON.stringify(installer));
+}
+
+export function lastTester(): Installer | null {
+  try {
+    const raw = localStorage.getItem(LAST_TESTER_KEY);
     return raw ? (JSON.parse(raw) as Installer) : null;
   } catch {
     return null;

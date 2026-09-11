@@ -1,9 +1,11 @@
 "use client";
 
 import { use, useState } from "react";
+import { NextChecklist } from "@/components/NextChecklist";
 import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
-import { Field, PassFailSelect, Screen, TextInput } from "@/components/ui";
+import { SignPick } from "@/components/SignPick";
+import { Field, PassFailSelect, Screen } from "@/components/ui";
 import { serialsDiffer } from "@/lib/status";
 import { useFrame } from "@/lib/useFrame";
 import type { BreakerTest, CbsdsLabel, PassFail } from "@/lib/types";
@@ -84,9 +86,10 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
           </details>
         ))}
         <Field label="Sign">
-          <TextInput
+          <SignPick
             value={et.frameIrSign}
-            onChange={(e) => patchEt({ ...et, frameIrSign: e.target.value })}
+            onChange={(v) => patchEt({ ...et, frameIrSign: v })}
+            placeholder="Sparky sign-off"
           />
         </Field>
       </section>
@@ -149,9 +152,10 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
                     onChange={(polarityTest) => patchBreaker(l, i, { ...test, polarityTest })}
                   />
                   <Field label="Sign">
-                    <TextInput
+                    <SignPick
                       value={test.sign}
-                      onChange={(e) => patchBreaker(l, i, { ...test, sign: e.target.value })}
+                      onChange={(v) => patchBreaker(l, i, { ...test, sign: v })}
+                      placeholder="Sparky sign-off"
                     />
                   </Field>
                 </div>
@@ -184,6 +188,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
           </label>
         ))}
       </section>
+      <NextChecklist frameId={id} current="testing" />
     </Screen>
   );
 }

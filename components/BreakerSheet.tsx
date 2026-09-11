@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
+import { SignPick } from "@/components/SignPick";
 import { emptySlot, serialsComplete, setAmp } from "@/lib/breaker";
 import { needsShuntTrip } from "@/lib/emptyFrame";
 import type { BreakerPosition, BreakerTest } from "@/lib/types";
@@ -291,11 +292,9 @@ function MeggerStep({
       />
       <label className="block text-sm">
         Sign-off
-        <input
-          value={test.sign}
-          onChange={(e) => onTest({ ...test, sign: e.target.value })}
-          className="mt-1 w-full rounded-2xl border border-rule bg-white px-4 py-3"
-        />
+        <div className="mt-1">
+          <SignPick value={test.sign} onChange={(v) => onTest({ ...test, sign: v })} placeholder="Sparky sign-off" />
+        </div>
       </label>
       <button type="button" onClick={onBack} className="w-full rounded-2xl bg-ink py-4 text-white">
         Done

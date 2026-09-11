@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { PdfButtons } from "@/components/PdfButtons";
+import { NextChecklist } from "@/components/NextChecklist";
 import { Field, Screen, TextInput, YesNaRow } from "@/components/ui";
 import { useFrame } from "@/lib/useFrame";
 import type { ChecklistItem, InstallChecklist } from "@/lib/types";
@@ -123,7 +123,7 @@ export default function InstallPage({ params }: { params: Promise<{ id: string }
           );
         })}
       </div>
-      <PdfButtons frame={frame} />
+      <NextChecklist frameId={id} current="install" />
     </Screen>
   );
 }
