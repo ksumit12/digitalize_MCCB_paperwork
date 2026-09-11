@@ -91,8 +91,8 @@ export function createEmptyFrame(opts?: {
   const date = iso.slice(0, 10);
   const time = now.toTimeString().slice(0, 5);
   const labels: CbsdsLabel[] = ["A", "B", "C", "D"];
-  const sign = opts?.installerName?.trim() ?? "";
-  const testSign = opts?.testerName?.trim() || opts?.testerInitials?.trim() || sign;
+  const sign = opts?.installerInitials?.trim() || opts?.installerName?.trim() || "";
+  const testSign = opts?.testerInitials?.trim() || opts?.testerName?.trim() || "";
 
   return {
     id: generateId(),
@@ -101,7 +101,7 @@ export function createEmptyFrame(opts?: {
     frameSlot: opts?.frameSlot ?? opts?.stringId ?? "",
     submitted: false,
     installerInitials: opts?.installerInitials ?? "",
-    installerName: sign,
+    installerName: opts?.installerName?.trim() || sign,
     testerInitials: opts?.testerInitials ?? "",
     testerName: opts?.testerName ?? "",
     shepherdFrameId: "",

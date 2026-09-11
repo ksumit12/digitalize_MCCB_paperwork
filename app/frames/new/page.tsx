@@ -22,36 +22,17 @@ function NewFrameForm() {
   const [stringKey, setStringKey] = useState(presetKey);
   const [stringId, setStringId] = useState(presetSlot || "");
   const [initials, setInitials] = useState("");
-  const [name, setName] = useState("");
-  const [nameTouched, setNameTouched] = useState(false);
   const [testerInitials, setTesterInitials] = useState("");
-  const [testerName, setTesterName] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const last = lastInstaller();
-    if (last) {
-      setInitials(last.initials);
-      setName(last.name);
-    }
+    if (last?.initials) setInitials(last.initials);
     const tester = lastTester();
-    if (tester) {
+    if (tester?.initials && tester.initials !== last?.initials) {
       setTesterInitials(tester.initials);
-      setTesterName(tester.name);
     }
   }, []);
-
-  async function onInitials(raw: string) {
-    const next = normalizeInitials(raw);
-    setInitials(next);
-    const found = await lookupInstaller(next);
-    if (found) {
-      setName(found.name);
-      setNameTouched(false);
-    } else if (!nameTouched) {
-      setName("");
-    }
-  }
 
   const slot = parseFrameSlot(stringId) || stringId;
 
@@ -68,7 +49,6 @@ function NewFrameForm() {
             placeholder="String no. e.g. 4"
             className="w-full rounded-2xl border border-rule bg-white px-4 py-3"
           />
-          <p className="text-sm text-neutral-600">Left stack L, right stack R, 7 at the top.</p>
           <div className="grid grid-cols-[2rem_1fr_1fr] gap-2">
             <div />
             <p className="text-center text-xs font-medium text-neutral-500">L</p>
@@ -100,59 +80,31 @@ function NewFrameForm() {
 
       <div className="space-y-3">
         <p className="text-sm font-medium">Installer</p>
-        <PeopleChips
-          selected={initials}
-          onPick={(p) => {
-            setInitials(p.initials);
-            setName(p.name);
-            setNameTouched(false);
-          }}
-        />
+        <PeopleChips selected={initials} onPick={(p) => setInitials(p.initials)} />
         <input
           value={initials}
-          onChange={(e) => void onInitials(e.target.value)}
+          onChange={(e) => setInitials(normalizeInitials(e.target.value))}
           placeholder="Initials"
           autoCapitalize="characters"
           className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg uppercase"
-        />
-        <input
-          value={name}
-          onChange={(e) => {
-            setNameTouched(true);
-            setName(e.target.value);
-          }}
-          placeholder="Name"
-          className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg"
         />
       </div>
 
       <div className="space-y-3">
-        <p className="text-sm font-medium">Testing sign-off</p>
-        <PeopleChips
-          selected={testerInitials}
-          onPick={(p) => {
-            setTesterInitials(p.initials);
-            setTesterName(p.name);
-          }}
-        />
+        <p className="text-sm font-medium">Testing</p>
+        <PeopleChips selected={testerInitials} onPick={(p) => setTesterInitials(p.initials)} />
         <input
           value={testerInitials}
-          onChange={(e) => setTesterInitials(e.target.value.toUpperCase())}
+          onChange={(e) => setTesterInitials(normalizeInitials(e.target.value))}
           placeholder="Initials"
           autoCapitalize="characters"
           className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg uppercase"
-        />
-        <input
-          value={testerName}
-          onChange={(e) => setTesterName(e.target.value)}
-          placeholder="Name"
-          className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg"
         />
       </div>
 
       <button
         type="button"
-        disabled={saving || !slot || !name.trim() || !stringKey.trim()}
+        disabled={saving || !slot || !initials.trim() || !stringKey.trim()}
         className="w-full rounded-2xl bg-ink py-4 text-lg text-white disabled:opacity-30"
         onClick={async () => {
           setSaving(true);
@@ -161,28 +113,32 @@ function NewFrameForm() {
             router.push(`/frames/${existing.id}/map`);
             return;
           }
+          const installerKey = normalizeInitials(initials);
+          const testerKey = normalizeInitials(testerInitials);
+          const knownInstaller = await lookupInstaller(installerKey);
+          const knownTester = testerKey ? await lookupInstaller(testerKey) : undefined;
           const installer = {
-            initials: normalizeInitials(initials) || name.slice(0, 2).toUpperCase(),
-            name: name.trim(),
-          };
-          const tester = {
-            initials: normalizeInitials(testerInitials) || installer.initials,
-            name: testerName.trim() || installer.name,
+            initials: installerKey,
+            name: knownInstaller?.name || installerKey,
           };
           await saveInstaller(installer);
-          if (tester.initials !== installer.initials || tester.name !== installer.name) {
-            await saveInstaller(tester);
-          }
           rememberLastInstaller(installer);
-          rememberLastTester(tester);
+          if (testerKey) {
+            const tester = {
+              initials: testerKey,
+              name: knownTester?.name || testerKey,
+            };
+            await saveInstaller(tester);
+            rememberLastTester(tester);
+          }
           const frame = createEmptyFrame({
             stringKey: stringKey.trim(),
             frameSlot: slot,
             stringId: slot,
             installerInitials: installer.initials,
             installerName: installer.name,
-            testerInitials: tester.initials,
-            testerName: tester.name,
+            testerInitials: testerKey,
+            testerName: testerKey ? knownTester?.name || testerKey : "",
           });
           await saveFrame(frame);
           router.push(`/frames/${frame.id}/map`);

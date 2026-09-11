@@ -24,7 +24,7 @@ export function SignPick({
       {people.length ? (
         <div className="flex flex-wrap gap-2">
           {people.map((p) => {
-            const label = `${p.initials}${p.name ? ` · ${p.name}` : ""}`;
+            const label = p.initials;
             const on = value === p.initials || value === p.name || value === label;
             return (
               <button
@@ -75,8 +75,7 @@ export function PeopleChips({
             onClick={() => onPick(p)}
             className={`rounded-full px-3 py-2 text-sm ${on ? "bg-ink text-white" : "bg-zinc-100"}`}
           >
-            {p.initials}
-            {p.name ? ` · ${p.name}` : ""}
+          {p.initials}
           </button>
         );
       })}
