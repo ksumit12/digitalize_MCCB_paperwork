@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { SerialScanner } from "@/components/SerialScanner";
 import { needsShuntTrip } from "@/lib/emptyFrame";
-import { emptySlot, meggerComplete, serialsComplete, setAmp } from "@/lib/breaker";
+import { emptySlot, serialsComplete, setAmp } from "@/lib/breaker";
 import { IR_ROWS, POLARITY_ROWS } from "@/lib/ir";
 import type { BreakerPosition, BreakerTest, PassFail } from "@/lib/types";
 
@@ -21,6 +21,7 @@ export function BreakerSheet({
   slot,
   breaker,
   test,
+  mode,
   onBreaker,
   onTest,
   onClose,
@@ -28,15 +29,16 @@ export function BreakerSheet({
   slot: string;
   breaker: BreakerPosition;
   test: BreakerTest;
+  mode: "installation" | "testing";
   onBreaker: (b: BreakerPosition) => void;
   onTest: (t: BreakerTest) => void;
   onClose: () => void;
 }) {
-  const [step, setStep] = useState<Step>(() => stepFor(breaker));
+  const [step, setStep] = useState<Step>(() => (mode === "testing" ? "megger" : stepFor(breaker)));
 
   useEffect(() => {
-    setStep(stepFor(breaker));
-  }, [slot]);
+    setStep(mode === "testing" ? "megger" : stepFor(breaker));
+  }, [slot, mode]);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-paper">
@@ -49,7 +51,7 @@ export function BreakerSheet({
       </header>
 
       <div className="flex-1 overflow-auto px-4 pb-8">
-        {step === "amp" ? (
+        {mode === "installation" && step === "amp" ? (
           <AmpStep
             onEmpty={() => {
               onBreaker(emptySlot(breaker));
@@ -62,7 +64,7 @@ export function BreakerSheet({
           />
         ) : null}
 
-        {step === "mccb" ? (
+        {mode === "installation" && step === "mccb" ? (
           <CaptureStep
             title="MCCB serial"
             hint="Photo the soft green sticker on top, or type it."
@@ -76,7 +78,7 @@ export function BreakerSheet({
           />
         ) : null}
 
-        {step === "ml" ? (
+        {mode === "installation" && step === "ml" ? (
           <CaptureStep
             title="Micrologic serial"
             hint="Scan the QR on the clear cover, or type WX…"
@@ -91,7 +93,7 @@ export function BreakerSheet({
           />
         ) : null}
 
-        {step === "shunt" ? (
+        {mode === "installation" && step === "shunt" ? (
           <div className="space-y-4 pt-6">
             <h2 className="text-2xl font-semibold">Shunt trip batch</h2>
             <p className="text-sm text-neutral-600">Coil batch number. 32A skips this.</p>
@@ -116,11 +118,10 @@ export function BreakerSheet({
           </div>
         ) : null}
 
-        {step === "done" ? (
+        {mode === "installation" && step === "done" ? (
           <DoneStep
             breaker={breaker}
-            test={test}
-            onMegger={() => setStep("megger")}
+            onClose={onClose}
             onEditAmp={() => setStep("amp")}
             onEditSerials={() => setStep("mccb")}
             onEmpty={() => {
@@ -130,8 +131,8 @@ export function BreakerSheet({
           />
         ) : null}
 
-        {step === "megger" ? (
-          <MeggerStep test={test} onTest={onTest} onBack={() => setStep("done")} />
+        {mode === "testing" ? (
+          <MeggerStep breaker={breaker} test={test} onTest={onTest} onBack={onClose} />
         ) : null}
       </div>
     </div>
@@ -212,21 +213,18 @@ function CaptureStep({
 
 function DoneStep({
   breaker,
-  test,
-  onMegger,
+  onClose,
   onEditAmp,
   onEditSerials,
   onEmpty,
 }: {
   breaker: BreakerPosition;
-  test: BreakerTest;
-  onMegger: () => void;
+  onClose: () => void;
   onEditAmp: () => void;
   onEditSerials: () => void;
   onEmpty: () => void;
 }) {
   const ready = serialsComplete(breaker);
-  const tested = meggerComplete(test);
   return (
     <div className="space-y-4 pt-6">
       <h2 className="text-2xl font-semibold">{ready ? "Breaker logged" : "Almost there"}</h2>
@@ -250,12 +248,8 @@ function DoneStep({
           Finish serials
         </button>
       ) : (
-        <button
-          type="button"
-          onClick={onMegger}
-          className="w-full rounded-2xl bg-emerald-600 py-4 text-lg font-medium text-white"
-        >
-          {tested ? "Edit megger" : "Megger this breaker"}
+        <button type="button" onClick={onClose} className="w-full rounded-2xl bg-ink py-4 text-lg text-white">
+          Back to map
         </button>
       )}
       <button type="button" onClick={onEmpty} className="w-full py-2 text-sm text-zinc-500">
@@ -266,10 +260,12 @@ function DoneStep({
 }
 
 function MeggerStep({
+  breaker,
   test,
   onTest,
   onBack,
 }: {
+  breaker: BreakerPosition;
   test: BreakerTest;
   onTest: (t: BreakerTest) => void;
   onBack: () => void;
@@ -277,6 +273,12 @@ function MeggerStep({
   return (
     <div className="space-y-4 pt-2">
       <h2 className="text-2xl font-semibold">Megger / IR</h2>
+      <ul className="rounded-2xl bg-white p-3 text-sm text-neutral-700">
+        <li>
+          {breaker.micrologicSettingAmps || "—"}A · MCCB {breaker.mccbSerialNumber || "—"}
+        </li>
+        <li>Micrologic {breaker.microLogicSerialNumber || "—"}</li>
+      </ul>
       <p className="text-sm text-neutral-600">This MCCB ON, others off. MΩ.</p>
       <div className="space-y-2">
         {IR_ROWS.map((row) => (
@@ -320,6 +322,14 @@ function MeggerStep({
           ))}
         </div>
       ))}
+      <label className="block text-sm">
+        Sign-off
+        <input
+          value={test.sign}
+          onChange={(e) => onTest({ ...test, sign: e.target.value })}
+          className="mt-1 w-full rounded-2xl border border-rule bg-white px-4 py-3"
+        />
+      </label>
       <button type="button" onClick={onBack} className="w-full rounded-2xl bg-ink py-4 text-white">
         Done
       </button>

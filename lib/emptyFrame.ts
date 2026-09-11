@@ -99,6 +99,7 @@ export function createEmptyFrame(opts?: {
     moduleFrameSerialNumber: "",
     market: "",
     manufacturer: "",
+    phase: "installation",
     startDate: date,
     startTime: time,
     finishDate: "",

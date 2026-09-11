@@ -7,16 +7,18 @@ import {
   serialsComplete,
   slotId,
 } from "@/lib/breaker";
-import type { CbsdsLabel, Frame } from "@/lib/types";
+import type { CbsdsLabel, Frame, FramePhase } from "@/lib/types";
 
 const LABELS: CbsdsLabel[] = ["A", "B", "C", "D"];
 
 export function FrameMap({
   frame,
+  phase,
   onSlot,
   onBoard,
 }: {
   frame: Frame;
+  phase: FramePhase;
   onSlot: (label: CbsdsLabel, position: number) => void;
   onBoard: (label: CbsdsLabel) => void;
 }) {
@@ -42,7 +44,7 @@ export function FrameMap({
             >
               {label}
               <span className="text-[9px] font-normal leading-tight">
-                {boardDone ? "IR" : "board"}
+                {phase === "testing" ? (boardDone ? "IR" : "test") : frame.manufacturer ? "mfr" : "pick"}
               </span>
             </button>
             <div className="grid flex-1 grid-cols-8 gap-1.5">
@@ -91,7 +93,7 @@ export function FrameMap({
         <span className="flex items-center gap-1">
           <i className="inline-block h-3 w-3 rounded bg-violet-500" /> 100A
         </span>
-        <span>✓ megger done</span>
+        <span>✓ megger done (testing)</span>
       </div>
     </div>
   );

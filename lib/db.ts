@@ -20,17 +20,36 @@ class FrameDb extends Dexie {
         }
       });
     });
+    this.version(4).stores({
+      frames: "id, updatedAt, shepherdFrameId, actswFrameId, stringId, manufacturer, phase",
+      installers: "initials",
+    }).upgrade((tx) => {
+      tx.table("frames").toCollection().modify((frame) => {
+        if (!frame.manufacturer) frame.manufacturer = "";
+        if (frame.phase !== "testing") frame.phase = "installation";
+      });
+    });
   }
+}
+
+export function withFrameDefaults(frame: Frame): Frame {
+  return {
+    ...frame,
+    manufacturer: frame.manufacturer ?? "",
+    phase: frame.phase === "testing" ? "testing" : "installation",
+  };
 }
 
 export const db = new FrameDb();
 
 export async function listFrames(): Promise<Frame[]> {
-  return db.frames.orderBy("updatedAt").reverse().toArray();
+  const rows = await db.frames.orderBy("updatedAt").reverse().toArray();
+  return rows.map(withFrameDefaults);
 }
 
 export async function getFrame(id: string): Promise<Frame | undefined> {
-  return db.frames.get(id);
+  const found = await db.frames.get(id);
+  return found ? withFrameDefaults(found) : undefined;
 }
 
 export async function saveFrame(frame: Frame): Promise<void> {

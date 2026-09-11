@@ -16,7 +16,7 @@ export function PdfButtons({ frame }: { frame: Frame }) {
     }
   }
 
-  const name = `frame-${frame.shepherdFrameId || frame.id.slice(0, 8)}.pdf`;
+  const name = `frame-${frame.stringId || frame.shepherdFrameId || frame.id.slice(0, 8)}.pdf`;
 
   return (
     <div className="no-print flex flex-wrap gap-2">

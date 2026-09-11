@@ -3,6 +3,7 @@
 import { BreakerSheet } from "@/components/BreakerSheet";
 import { BoardMegger } from "@/components/BoardMegger";
 import { FrameMap } from "@/components/FrameMap";
+import { SwitchboardInstall } from "@/components/SwitchboardInstall";
 import {
   getBreaker,
   getTest,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/breaker";
 import { frameLabel } from "@/lib/crew";
 import { useFrame } from "@/lib/useFrame";
-import type { BreakerTest, CbsdsLabel, IrReadings, PassFail } from "@/lib/types";
+import type { BreakerTest, CbsdsLabel, FramePhase, IrReadings, Manufacturer, PassFail } from "@/lib/types";
 import { use, useState } from "react";
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,25 +25,54 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   if (loading) return <p className="p-6 text-sm text-neutral-500">Loading…</p>;
   if (!frame) return <p className="p-6">Frame not found.</p>;
 
+  const phase: FramePhase = frame.phase === "testing" ? "testing" : "installation";
+  const testing = phase === "testing";
   const name = frameLabel(frame);
 
   return (
     <main className="mx-auto max-w-lg px-3 pb-8 pt-4">
-      <div className="mb-4 flex items-end justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">{name}</h1>
-          <p className="text-xs text-neutral-500">
-            {frame.installerName ? `${frame.installerName} · ` : ""}
-            {serialsDoneCount(frame)} / {usedCount(frame) || 0} serials
-            {savedAt ? ` · saved ${savedAt}` : ""}
-          </p>
-        </div>
+      <div
+        className={`mb-4 rounded-2xl px-4 py-3 ${
+          testing ? "bg-emerald-700 text-white" : "bg-ink text-white"
+        }`}
+      >
+        <p className="text-xs uppercase tracking-wide opacity-80">
+          {testing ? "Testing phase" : "Installation phase"}
+        </p>
+        <h1 className="text-xl font-semibold">{name}</h1>
+        <p className="text-xs opacity-80">
+          {frame.installerName ? `${frame.installerName} · ` : ""}
+          {serialsDoneCount(frame)} / {usedCount(frame) || 0} serials
+          {savedAt ? ` · saved ${savedAt}` : ""}
+        </p>
       </div>
+
+      {testing ? (
+        <button
+          type="button"
+          onClick={() => update((f) => ({ ...f, phase: "installation" }))}
+          className="mb-3 w-full rounded-2xl border border-rule bg-white py-3 text-sm"
+        >
+          Return to installation
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => update((f) => ({ ...f, phase: "testing" }))}
+          className="mb-3 w-full rounded-2xl bg-emerald-700 py-3 text-sm font-medium text-white"
+        >
+          Move to Testing Phase
+        </button>
+      )}
+
       <p className="mb-3 text-sm text-neutral-600">
-        Grey = empty (not on this drawing). Tap a square. Tap A/B/C/D for board megger.
+        {testing
+          ? "Tap a breaker for IR / polarity. Tap A/B/C/D for board megger."
+          : "Tap a breaker for serials. Tap A/B/C/D for manufacturer + board serial."}
       </p>
       <FrameMap
         frame={frame}
+        phase={phase}
         onSlot={(label, position) => {
           setBoard(null);
           setSlot({ label, position });
@@ -58,6 +88,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
           slot={`${slot.label}${slot.position}`}
           breaker={getBreaker(frame, slot.label, slot.position)}
           test={getTest(frame, slot.label, slot.position)}
+          mode={phase}
           onBreaker={(b) => update((f) => patchBreaker(f, slot.label, slot.position, b))}
           onTest={(t) =>
             update((f) => ({
@@ -77,7 +108,26 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
         />
       ) : null}
 
-      {board ? (
+      {board && !testing ? (
+        <SwitchboardInstall
+          label={board}
+          frame={frame}
+          onManufacturer={(value: Exclude<Manufacturer, "">) =>
+            update((f) => ({ ...f, manufacturer: value }))
+          }
+          onSerial={(value) =>
+            update((f) => ({
+              ...f,
+              cbsds: f.cbsds.map((c) =>
+                c.label === board ? { ...c, cbsdsSerialNumber: value } : c,
+              ),
+            }))
+          }
+          onClose={() => setBoard(null)}
+        />
+      ) : null}
+
+      {board && testing ? (
         <BoardMegger
           label={board}
           frame={frame}

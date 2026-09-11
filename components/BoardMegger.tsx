@@ -29,6 +29,12 @@ export function BoardMegger({
       </header>
       <div className="flex-1 overflow-auto px-4 pb-8">
         <p className="mb-3 text-sm text-neutral-600">All MCCBs OFF, FCL fuses pulled. MΩ.</p>
+        <div className="mb-4 rounded-2xl bg-white p-3 text-sm">
+          <p>Manufacturer: {frame.manufacturer || "—"}</p>
+          <p>
+            Board {label} serial: {frame.cbsds.find((c) => c.label === label)?.cbsdsSerialNumber || "—"}
+          </p>
+        </div>
         <div className="mb-4 flex gap-2">
           {(["pass", "fail"] as const).map((v) => (
             <button
