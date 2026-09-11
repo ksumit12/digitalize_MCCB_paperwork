@@ -116,7 +116,17 @@ export async function saveInstaller(installer: Installer): Promise<void> {
 }
 
 export async function listInstallers(): Promise<Installer[]> {
-  return db.installers.toArray();
+  const [people, frames] = await Promise.all([db.installers.toArray(), db.frames.toArray()]);
+  const used = new Map<string, number>();
+  for (const frame of frames) {
+    for (const raw of [frame.installerInitials, frame.testerInitials]) {
+      const key = normalizeInitials(raw || "");
+      if (key) used.set(key, (used.get(key) || 0) + 1);
+    }
+  }
+  return people.sort(
+    (a, b) => (used.get(b.initials) || 0) - (used.get(a.initials) || 0) || a.initials.localeCompare(b.initials),
+  );
 }
 
 export async function listStringRuns(): Promise<StringRun[]> {
@@ -145,6 +155,19 @@ export async function addStringRun(key: string): Promise<void> {
     key: trimmed,
     createdAt: new Date().toISOString(),
     archivedAt: undefined,
+  });
+}
+
+export async function deleteStringAndFrames(key: string): Promise<void> {
+  const trimmed = key.trim();
+  if (!trimmed) return;
+  const rows = (await db.frames.toArray()).map(withFrameDefaults);
+  const ids = rows
+    .filter((frame) => (frame.stringKey?.trim() || "1") === trimmed)
+    .map((frame) => frame.id);
+  await db.transaction("rw", db.frames, db.stringRuns, async () => {
+    if (ids.length) await db.frames.bulkDelete(ids);
+    await db.stringRuns.delete(trimmed);
   });
 }
 

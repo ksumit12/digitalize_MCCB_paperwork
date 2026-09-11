@@ -5,19 +5,32 @@ import { StringBoard } from "@/components/StringBoard";
 import {
   addStringRun,
   archiveStringRun,
+  deleteStringAndFrames,
   listFrames,
   listStringRuns,
   unarchiveStringRun,
   type StringRun,
 } from "@/lib/db";
-import { FRAME_SLOTS, stringKeyFromFrame } from "@/lib/stringLayout";
+import { FRAME_SLOTS, slotFromFrame, stringKeyFromFrame } from "@/lib/stringLayout";
 import type { Frame } from "@/lib/types";
+
+function uniqueStarted(frames: Frame[]): number {
+  const slots = new Set(frames.map(slotFromFrame).filter(Boolean));
+  return slots.size;
+}
 
 function submittedSlotCount(frames: Frame[]): number {
   const slots = new Set(
     frames.filter((f) => f.submitted).map((f) => (f.frameSlot || f.stringId || "").toUpperCase()),
   );
   return [...slots].filter((s) => FRAME_SLOTS.includes(s as (typeof FRAME_SLOTS)[number])).length;
+}
+
+function lastTouched(frames: Frame[]): number {
+  return frames.reduce((max, f) => {
+    const t = Date.parse(f.updatedAt || f.createdAt || "") || 0;
+    return t > max ? t : max;
+  }, 0);
 }
 
 export default function HomePage() {
@@ -27,6 +40,8 @@ export default function HomePage() {
   const [adding, setAdding] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [showDone, setShowDone] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function refresh() {
     const [list, stringRuns] = await Promise.all([listFrames(), listStringRuns()]);
@@ -54,18 +69,26 @@ export default function HomePage() {
     const groupFrames = frames.filter((f) => stringKeyFromFrame(f) === key);
     const run = runs.find((r) => r.key === key);
     const complete = submittedSlotCount(groupFrames) >= FRAME_SLOTS.length;
+    const started = uniqueStarted(groupFrames);
     return {
       key,
       frames: groupFrames,
       archived: Boolean(run?.archivedAt) || complete,
-      started: groupFrames.length,
+      started,
+      lastTouched: lastTouched(groupFrames) || Date.parse(run?.createdAt || "") || 0,
     };
   });
 
   const active = grouped
     .filter((g) => !g.archived)
-    .sort((a, b) => b.started - a.started || a.key.localeCompare(b.key, undefined, { numeric: true }));
-  const done = grouped.filter((g) => g.archived);
+    .sort(
+      (a, b) => b.started - a.started || b.lastTouched - a.lastTouched || a.key.localeCompare(b.key, undefined, { numeric: true }),
+    );
+  const done = grouped
+    .filter((g) => g.archived)
+    .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
+
+  const pending = grouped.find((g) => g.key === pendingDelete);
 
   return (
     <main className="mx-auto max-w-lg px-4 py-6">
@@ -123,6 +146,39 @@ export default function HomePage() {
         </form>
       ) : null}
 
+      {pendingDelete && pending ? (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-semibold text-red-900">Delete string {pendingDelete}?</p>
+          <p className="mt-1 text-sm text-red-800">
+            This removes the string and all {pending.started} of its frames from this phone. It cannot be undone.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              className="rounded-xl bg-white px-4 py-2 text-sm font-medium ring-1 ring-rule"
+              onClick={() => setPendingDelete(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-xl bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={deleting}
+              onClick={async () => {
+                setDeleting(true);
+                await deleteStringAndFrames(pendingDelete);
+                setPendingDelete(null);
+                setDeleting(false);
+                await refresh();
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete string"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {!ready ? (
         <p className="text-sm text-neutral-500">Loading…</p>
       ) : active.length === 0 && done.length === 0 ? (
@@ -132,7 +188,12 @@ export default function HomePage() {
       ) : (
         <div className="space-y-4">
           {active.map((group) => (
-            <StringBoard key={group.key} stringKey={group.key} frames={group.frames} />
+            <StringBoard
+              key={group.key}
+              stringKey={group.key}
+              frames={group.frames}
+              onDelete={setPendingDelete}
+            />
           ))}
           {done.length ? (
             <div className="pt-2">
@@ -141,12 +202,16 @@ export default function HomePage() {
                 onClick={() => setShowDone((v) => !v)}
                 className="text-sm text-neutral-500"
               >
-                {showDone ? "Hide" : "Show"} submitted strings ({done.length})
+                {showDone ? "Hide" : "Show"} past strings ({done.length})
               </button>
               {showDone
                 ? done.map((group) => (
                     <div key={group.key} className="mt-3 space-y-2">
-                      <StringBoard stringKey={group.key} frames={group.frames} />
+                      <StringBoard
+                        stringKey={group.key}
+                        frames={group.frames}
+                        onDelete={setPendingDelete}
+                      />
                       <button
                         type="button"
                         className="text-xs text-neutral-500 underline"
