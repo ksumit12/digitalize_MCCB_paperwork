@@ -6,10 +6,14 @@ import { serialCandidates } from "@/lib/serialParse";
 
 type Box = { x: number; y: number; w: number; h: number };
 
-function guideBox(vw: number, vh: number): Box {
-  const w = vw * 0.9;
-  const h = Math.min(vh * 0.42, w / 2.6);
-  return { x: (vw - w) / 2, y: (vh - h) / 2, w, h };
+/** Matches the on-screen preview (object-cover, aspect 13/5). */
+const VIEW_ASPECT = 13 / 5;
+
+function visibleRoi(vw: number, vh: number): Box {
+  const band = vw / VIEW_ASPECT;
+  if (band <= vh) return { x: 0, y: (vh - band) / 2, w: vw, h: band };
+  const wide = vh * VIEW_ASPECT;
+  return { x: (vw - wide) / 2, y: 0, w: wide, h: vh };
 }
 
 function crop(src: HTMLCanvasElement, box: Box, maxSide = 640) {
@@ -53,14 +57,12 @@ export function MccbPhotoSheet({
   onSerial: (serial: string) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const overlayRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const camGenRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [camError, setCamError] = useState("");
-  const [hint, setHint] = useState("Fill the green box with the lime sticker, then Snap.");
-  const [raw, setRaw] = useState("");
+  const [hint, setHint] = useState("Lime sticker in the green window, then Snap.");
   const [guess, setGuess] = useState("");
 
   const stopCam = useCallback(() => {
@@ -108,37 +110,11 @@ export function MccbPhotoSheet({
     return () => stopCam();
   }, [startCam, stopCam]);
 
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      const video = videoRef.current;
-      const overlay = overlayRef.current;
-      if (video && overlay && video.readyState >= 2 && video.videoWidth) {
-        overlay.width = video.videoWidth;
-        overlay.height = video.videoHeight;
-        const ctx = overlay.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, overlay.width, overlay.height);
-          const box = guideBox(overlay.width, overlay.height);
-          ctx.fillStyle = "rgba(0,0,0,0.35)";
-          ctx.fillRect(0, 0, overlay.width, overlay.height);
-          ctx.clearRect(box.x, box.y, box.w, box.h);
-          ctx.strokeStyle = "#22c55e";
-          ctx.lineWidth = Math.max(4, overlay.width / 220);
-          ctx.strokeRect(box.x, box.y, box.w, box.h);
-        }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
   async function readCanvas(frame: HTMLCanvasElement, framed: boolean) {
     setBusy(true);
     setHint("Reading…");
     try {
-      const region = framed ? guideBox(frame.width, frame.height) : { x: 0, y: 0, w: frame.width, h: frame.height };
+      const region = framed ? visibleRoi(frame.width, frame.height) : { x: 0, y: 0, w: frame.width, h: frame.height };
       const paddle = await getPaddleOcr();
       const [result] = await paddle.predict(crop(frame, region), {
         textDetLimitSideLen: 480,
@@ -146,13 +122,8 @@ export function MccbPhotoSheet({
       });
       const text = (result?.items ?? []).map((item) => item.text ?? "").join("\n");
       const parsed = serialCandidates(text, "mccb")[0] ?? "";
-      setRaw(text.trim());
-      setGuess(parsed);
-      setHint(
-        parsed
-          ? "Check the serial, then confirm."
-          : "No 11-character serial in the box — move closer and Snap again.",
-      );
+      setGuess(parsed || text.replace(/\s+/g, "").slice(0, 11));
+      setHint(parsed ? "Check, then confirm." : "Nothing in the window — move closer and Snap.");
     } catch (e) {
       setHint(e instanceof Error ? e.message : "Read failed");
     } finally {
@@ -161,16 +132,16 @@ export function MccbPhotoSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
-      <div className="max-h-[92dvh] w-full max-w-md overflow-auto rounded-2xl bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center">
+      <div className="flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-white p-3 sm:h-auto sm:max-h-[100dvh] sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between">
           <h2 className="font-semibold">MCCB sticker</h2>
           <button type="button" onClick={onClose} className="text-sm text-neutral-500">
             Close
           </button>
         </div>
-        <p className="mb-3 text-sm text-neutral-600">{hint}</p>
-        {camError ? <p className="mb-2 text-sm text-red-700">{camError}</p> : null}
+        <p className="mt-1 shrink-0 truncate text-sm text-neutral-600">{hint}</p>
+        {camError ? <p className="shrink-0 text-sm text-red-700">{camError}</p> : null}
 
         <input
           ref={fileRef}
@@ -184,12 +155,11 @@ export function MccbPhotoSheet({
           }}
         />
 
-        <div className="relative mb-3 overflow-hidden rounded-xl bg-black">
-          <video ref={videoRef} playsInline muted autoPlay className="w-full" />
-          <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+        <div className="relative mt-2 aspect-[13/5] w-full shrink-0 overflow-hidden rounded-xl border-2 border-emerald-600 bg-black">
+          <video ref={videoRef} playsInline muted autoPlay className="h-full w-full object-cover object-center" />
         </div>
 
-        <div className="mb-3 flex gap-2">
+        <div className="mt-2 flex shrink-0 gap-2">
           <button
             type="button"
             disabled={busy}
@@ -201,28 +171,22 @@ export function MccbPhotoSheet({
           >
             {busy ? "Reading…" : "Snap"}
           </button>
-          <button type="button" onClick={() => void startCam()} className="rounded-xl border border-rule px-3 py-3">
-            Camera
-          </button>
-          <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-rule px-3 py-3">
+          <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-rule px-4 py-3">
             Album
           </button>
         </div>
 
-        {raw ? (
-          <pre className="mb-2 whitespace-pre-wrap break-all rounded-lg bg-neutral-50 p-2 font-mono text-xs">{raw}</pre>
-        ) : null}
         <input
           value={guess}
           onChange={(e) => setGuess(e.target.value.toUpperCase())}
           placeholder="Serial"
-          className="w-full rounded-lg border border-rule px-3 py-3 uppercase"
+          className="mt-2 w-full shrink-0 rounded-lg border border-rule px-3 py-3 uppercase"
         />
         <button
           type="button"
           disabled={!guess.trim()}
           onClick={() => onSerial(guess.trim().toUpperCase())}
-          className="mt-2 w-full rounded-lg bg-ink py-3 text-white disabled:opacity-40"
+          className="mt-2 w-full shrink-0 rounded-lg bg-ink py-3 text-white disabled:opacity-40"
         >
           Confirm
         </button>
