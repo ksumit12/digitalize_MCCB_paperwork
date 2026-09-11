@@ -48,17 +48,19 @@ export default function BreakerPage({
       <Link href={`/frames/${id}/cbsds/${cbsdsLabel}`} className="text-sm text-neutral-600">
         ← CBSDS {cbsdsLabel}
       </Link>
-      <Field label="MCCB serial (green sticker)">
+      <Field label="MCCB serial">
         <SerialScanner
           type="ocr"
+          kind="mccb"
           label="MCCB serial"
           value={breaker.mccbSerialNumber}
           onConfirm={(v) => patchBreaker({ ...breaker, mccbSerialNumber: v })}
         />
       </Field>
-      <Field label="Micrologic serial (QR on clear cover)">
+      <Field label="Micrologic serial">
         <SerialScanner
           type="qr"
+          kind="ml"
           label="Micrologic serial"
           value={breaker.microLogicSerialNumber}
           onConfirm={(v) => patchBreaker({ ...breaker, microLogicSerialNumber: v })}
@@ -87,20 +89,18 @@ export default function BreakerPage({
         </div>
       </Field>
       {showShunt ? (
-        <Field label="Shunt trip batch number (coil — not unique)">
-          <input
+        <Field label="Shunt trip">
+          <SerialScanner
+            type="ocr"
+            kind="shunt"
+            label="Shunt trip"
             value={breaker.shuntTripBatchNumber}
-            onChange={(e) => patchBreaker({ ...breaker, shuntTripBatchNumber: e.target.value })}
-            className="w-full rounded-lg border border-rule px-3 py-2.5"
+            onConfirm={(v) => patchBreaker({ ...breaker, shuntTripBatchNumber: v })}
           />
         </Field>
-      ) : (
-        <p className="rounded-lg bg-neutral-100 p-3 text-sm text-neutral-600">
-          {breaker.micrologicSettingAmps === 32
-            ? "32A whip — no shunt trip coil (empty)."
-            : "Select 63A or 100A to record the shunt trip batch number."}
-        </p>
-      )}
+      ) : breaker.micrologicSettingAmps === 32 ? (
+        <p className="rounded-lg bg-neutral-100 p-3 text-sm">No shunt (32A)</p>
+      ) : null}
       <CheckRow
         label="Install MCCB per Shop Drawing"
         checked={breaker.mccbInstalled}

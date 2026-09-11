@@ -91,3 +91,14 @@ export function usedCount(frame: Frame): number {
 export function serialsDoneCount(frame: Frame): number {
   return frame.cbsds.flatMap((c) => c.breakerPositions).filter(serialsComplete).length;
 }
+
+export function nextMapSlot(
+  label: CbsdsLabel,
+  position: number,
+): { label: CbsdsLabel; position: number } | null {
+  if (position < 8) return { label, position: position + 1 };
+  const order: CbsdsLabel[] = ["A", "B", "C", "D"];
+  const i = order.indexOf(label);
+  if (i >= 0 && i < order.length - 1) return { label: order[i + 1], position: 1 };
+  return null;
+}

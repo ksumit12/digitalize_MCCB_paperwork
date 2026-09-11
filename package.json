@@ -6,7 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "test:serials": "node scripts/read-serials.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.11",

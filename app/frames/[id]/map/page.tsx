@@ -7,6 +7,7 @@ import { SwitchboardInstall } from "@/components/SwitchboardInstall";
 import {
   getBreaker,
   getTest,
+  nextMapSlot,
   patchBreaker,
   serialsDoneCount,
   usedCount,
@@ -113,6 +114,10 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
             }))
           }
           onClose={() => setSlot(null)}
+          onNext={() => {
+            const n = nextMapSlot(slot.label, slot.position);
+            setSlot(n);
+          }}
         />
       ) : null}
 

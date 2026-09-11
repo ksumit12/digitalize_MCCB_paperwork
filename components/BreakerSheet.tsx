@@ -26,6 +26,7 @@ export function BreakerSheet({
   onBreaker,
   onTest,
   onClose,
+  onNext,
 }: {
   slot: string;
   breaker: BreakerPosition;
@@ -34,6 +35,7 @@ export function BreakerSheet({
   onBreaker: (b: BreakerPosition) => void;
   onTest: (t: BreakerTest) => void;
   onClose: () => void;
+  onNext?: () => void;
 }) {
   const [step, setStep] = useState<Step>(() => (mode === "testing" ? "megger" : stepFor(breaker)));
 
@@ -56,7 +58,8 @@ export function BreakerSheet({
           <AmpStep
             onEmpty={() => {
               onBreaker(emptySlot(breaker));
-              onClose();
+              if (onNext) onNext();
+              else onClose();
             }}
             onAmp={(amps) => {
               onBreaker(setAmp(breaker, amps));
@@ -68,8 +71,8 @@ export function BreakerSheet({
         {mode === "installation" && step === "mccb" ? (
           <CaptureStep
             title="MCCB serial"
-            hint="Green sticker on top."
             type="ocr"
+            kind="mccb"
             value={breaker.mccbSerialNumber}
             onConfirm={(v) => {
               onBreaker({ ...breaker, mccbSerialNumber: v });
@@ -82,8 +85,8 @@ export function BreakerSheet({
         {mode === "installation" && step === "ml" ? (
           <CaptureStep
             title="Micrologic serial"
-            hint="QR on the cover."
             type="qr"
+            kind="ml"
             value={breaker.microLogicSerialNumber}
             onConfirm={(v) => {
               const next = { ...breaker, microLogicSerialNumber: v };
@@ -96,22 +99,18 @@ export function BreakerSheet({
 
         {mode === "installation" && step === "shunt" ? (
           <div className="space-y-4 pt-6">
-            <h2 className="text-2xl font-semibold">Shunt trip batch</h2>
-            <input
-              autoFocus
+            <h2 className="text-2xl font-semibold">Shunt trip</h2>
+            <SerialScanner
+              type="ocr"
+              kind="shunt"
+              label="Shunt trip"
               value={breaker.shuntTripBatchNumber}
-              onChange={(e) => onBreaker({ ...breaker, shuntTripBatchNumber: e.target.value })}
-              className="w-full rounded-2xl border border-rule bg-white px-4 py-4 text-lg"
-              placeholder="Batch on the coil"
+              onConfirm={(v) => {
+                onBreaker({ ...breaker, shuntTripBatchNumber: v });
+                setStep("done");
+              }}
+              hero
             />
-            <button
-              type="button"
-              disabled={!breaker.shuntTripBatchNumber.trim()}
-              onClick={() => setStep("done")}
-              className="w-full rounded-2xl bg-ink py-4 text-lg text-white disabled:opacity-30"
-            >
-              Save
-            </button>
             <button type="button" onClick={() => setStep("ml")} className="w-full py-2 text-sm text-neutral-500">
               Back
             </button>
@@ -122,6 +121,7 @@ export function BreakerSheet({
           <DoneStep
             breaker={breaker}
             onClose={onClose}
+            onNext={onNext}
             onEditAmp={() => setStep("amp")}
             onEditSerials={() => setStep("mccb")}
             onEmpty={() => {
@@ -183,15 +183,15 @@ function AmpStep({
 
 function CaptureStep({
   title,
-  hint,
   type,
+  kind,
   value,
   onConfirm,
   onBack,
 }: {
   title: string;
-  hint: string;
   type: "qr" | "ocr";
+  kind: "mccb" | "ml" | "shunt";
   value: string;
   onConfirm: (v: string) => void;
   onBack: () => void;
@@ -199,8 +199,7 @@ function CaptureStep({
   return (
     <div className="space-y-4 pt-4">
       <h2 className="text-2xl font-semibold">{title}</h2>
-      <p className="text-sm text-neutral-600">{hint}</p>
-      <SerialScanner type={type} label={title} value={value} onConfirm={onConfirm} hero />
+      <SerialScanner type={type} kind={kind} label={title} value={value} onConfirm={onConfirm} hero />
       <button type="button" onClick={onBack} className="w-full py-2 text-sm text-neutral-500">
         Back
       </button>
@@ -211,12 +210,14 @@ function CaptureStep({
 function DoneStep({
   breaker,
   onClose,
+  onNext,
   onEditAmp,
   onEditSerials,
   onEmpty,
 }: {
   breaker: BreakerPosition;
   onClose: () => void;
+  onNext?: () => void;
   onEditAmp: () => void;
   onEditSerials: () => void;
   onEmpty: () => void;
@@ -245,9 +246,20 @@ function DoneStep({
           Finish serials
         </button>
       ) : (
-        <button type="button" onClick={onClose} className="w-full rounded-2xl bg-ink py-4 text-lg text-white">
-          Back to map
-        </button>
+        <>
+          {onNext ? (
+            <button type="button" onClick={onNext} className="w-full rounded-2xl bg-ink py-4 text-lg text-white">
+              Next
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className={`w-full rounded-2xl py-4 text-lg ${onNext ? "border border-rule bg-white" : "bg-ink text-white"}`}
+          >
+            Map
+          </button>
+        </>
       )}
       <button type="button" onClick={onEmpty} className="w-full py-2 text-sm text-zinc-500">
         Mark empty
