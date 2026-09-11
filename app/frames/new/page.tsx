@@ -99,7 +99,7 @@ function NewFrameForm() {
       ) : null}
 
       <div className="space-y-3">
-        <p className="text-sm font-medium">Who is installing? (MCCB / install checklist)</p>
+        <p className="text-sm font-medium">Installer</p>
         <PeopleChips
           selected={initials}
           onPick={(p) => {
@@ -121,14 +121,13 @@ function NewFrameForm() {
             setNameTouched(true);
             setName(e.target.value);
           }}
-          placeholder="Name (change if needed)"
+          placeholder="Name"
           className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg"
         />
       </div>
 
       <div className="space-y-3">
-        <p className="text-sm font-medium">Who signs electrical testing? (sparky / supervisor)</p>
-        <p className="text-xs text-neutral-500">Saved from last time. Skip if it is the same person.</p>
+        <p className="text-sm font-medium">Testing sign-off</p>
         <PeopleChips
           selected={testerInitials}
           onPick={(p) => {
@@ -139,14 +138,14 @@ function NewFrameForm() {
         <input
           value={testerInitials}
           onChange={(e) => setTesterInitials(e.target.value.toUpperCase())}
-          placeholder="Sparky initials"
+          placeholder="Initials"
           autoCapitalize="characters"
           className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg uppercase"
         />
         <input
           value={testerName}
           onChange={(e) => setTesterName(e.target.value)}
-          placeholder="Sparky name (optional)"
+          placeholder="Name"
           className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg"
         />
       </div>

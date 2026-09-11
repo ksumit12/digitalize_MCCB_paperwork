@@ -39,9 +39,6 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
 
   return (
     <Screen title="Electrical testing" savedAt={savedAt}>
-      <p className="text-sm text-neutral-600">
-        Tap Pass or Fail, then drag to paint the rest. Paperwork prints &gt;500mohm on pass.
-      </p>
       <section className="space-y-2 rounded-xl border border-rule bg-white p-3">
         <h2 className="font-medium">Visual inspection P/F</h2>
         <div className="grid grid-cols-4 gap-2">
@@ -64,8 +61,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
         </div>
       </section>
       <section className="space-y-3 rounded-xl border border-rule bg-white p-3">
-      <h2 className="font-medium">IR test — all MCCBs OFF, FCL fuses pulled</h2>
-        <p className="text-sm text-neutral-600">Pass/fail on screen. Print writes &gt;500mohm when it passes.</p>
+        <h2 className="font-medium">IR — all MCCBs OFF, FCL fuses pulled</h2>
         {LABELS.map((l) => (
           <details key={l} className="rounded-lg border border-rule p-2">
             <summary className="cursor-pointer font-medium">CBSDS {l}</summary>

@@ -72,7 +72,6 @@ export default function HomePage() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Strings</h1>
-          <p className="text-xs text-neutral-500">Current work first. Finished 14-frame strings drop off this list.</p>
         </div>
         <button
           type="button"
@@ -128,7 +127,7 @@ export default function HomePage() {
         <p className="text-sm text-neutral-500">Loading…</p>
       ) : active.length === 0 && done.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-rule p-8 text-center text-neutral-600">
-          Add a string, then tap 7R / 7L like the drawing. Empty tiles are not started yet.
+          Add a string.
         </p>
       ) : (
         <div className="space-y-4">
@@ -156,7 +155,7 @@ export default function HomePage() {
                           await refresh();
                         }}
                       >
-                        Put {group.key} back on the home list
+                        Restore {group.key}
                       </button>
                     </div>
                   ))

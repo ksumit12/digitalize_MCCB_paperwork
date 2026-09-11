@@ -28,7 +28,7 @@ export function BoardMegger({
         <span className="w-8" />
       </header>
       <div className="flex-1 overflow-auto px-4 pb-8">
-        <p className="mb-3 text-sm text-neutral-600">All MCCBs OFF, FCL fuses pulled. Pass prints as &gt;500mohm.</p>
+        <p className="mb-3 text-sm text-neutral-600">All MCCBs OFF, FCL fuses pulled.</p>
         <div className="mb-4 rounded-2xl bg-white p-3 text-sm">
           <p>Manufacturer: {frame.manufacturer || "—"}</p>
           <p>

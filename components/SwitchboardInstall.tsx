@@ -31,13 +31,9 @@ export function SwitchboardInstall({
       </header>
       <div className="flex-1 space-y-4 overflow-auto px-4 pb-8">
         <h2 className="text-2xl font-semibold">Manufacturer</h2>
-        <p className="text-sm text-neutral-600">
-          One maker for the whole frame. First pick locks A–D.
-        </p>
         {locked ? (
           <div className="rounded-2xl bg-white px-4 py-5 text-center text-xl font-semibold">
             {frame.manufacturer}
-            <p className="mt-1 text-sm font-normal text-neutral-500">Locked for this frame</p>
           </div>
         ) : (
           <div className="space-y-3">

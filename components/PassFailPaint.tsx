@@ -56,7 +56,6 @@ export function PassFailPaint({
           </button>
         </div>
       ) : null}
-      <p className="text-xs text-neutral-500">Hold Pass or Fail, then drag down the list to paint the rest. Paperwork prints &gt;500mohm on pass.</p>
       {rows.map((row) => {
         const v = getValue(row.key).toLowerCase();
         return (

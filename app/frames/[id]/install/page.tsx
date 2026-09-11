@@ -35,11 +35,8 @@ export default function InstallPage({ params }: { params: Promise<{ id: string }
 
   return (
     <Screen title="Frame install" savedAt={savedAt}>
-      <p className="rounded-2xl bg-white px-4 py-3 text-sm text-neutral-600">
+      <p className="rounded-2xl bg-white px-4 py-3 text-sm">
         String {frame.stringKey || "1"} · {frame.frameSlot || frame.stringId || "—"}
-        <span className="mt-1 block text-xs">
-          Paper IDs and PDF live in Office. Tick Yes or N/A as you go.
-        </span>
       </p>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Start date">

@@ -49,7 +49,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
 
       {frame.submitted ? (
         <p className="mb-3 rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          Submitted — office can see this as done. Tap tiles for detail.
+          Submitted
         </p>
       ) : testing ? (
         <div className="mb-3 space-y-2">
@@ -78,11 +78,6 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
         </button>
       )}
 
-      <p className="mb-3 text-sm text-neutral-600">
-        {testing
-          ? "Tap a breaker for IR / polarity. Tap A/B/C/D for board megger."
-          : "Tap a breaker for serials. Tap A/B/C/D for manufacturer + board serial."}
-      </p>
       <FrameMap
         frame={frame}
         phase={phase}

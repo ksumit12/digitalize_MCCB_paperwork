@@ -68,7 +68,7 @@ export function BreakerSheet({
         {mode === "installation" && step === "mccb" ? (
           <CaptureStep
             title="MCCB serial"
-            hint="Photo the soft green sticker on top, or type it."
+            hint="Green sticker on top."
             type="ocr"
             value={breaker.mccbSerialNumber}
             onConfirm={(v) => {
@@ -82,7 +82,7 @@ export function BreakerSheet({
         {mode === "installation" && step === "ml" ? (
           <CaptureStep
             title="Micrologic serial"
-            hint="Scan the QR on the clear cover, or type WX…"
+            hint="QR on the cover."
             type="qr"
             value={breaker.microLogicSerialNumber}
             onConfirm={(v) => {
@@ -97,7 +97,6 @@ export function BreakerSheet({
         {mode === "installation" && step === "shunt" ? (
           <div className="space-y-4 pt-6">
             <h2 className="text-2xl font-semibold">Shunt trip batch</h2>
-            <p className="text-sm text-neutral-600">Coil batch number. 32A skips this.</p>
             <input
               autoFocus
               value={breaker.shuntTripBatchNumber}
@@ -149,10 +148,7 @@ function AmpStep({
 }) {
   return (
     <div className="space-y-3 pt-4">
-      <h2 className="text-2xl font-semibold">What whip is this?</h2>
-      <p className="text-sm text-neutral-600">
-        Tap the rating from the drawing, or Empty if this hole has no breaker.
-      </p>
+      <h2 className="text-2xl font-semibold">Whip rating</h2>
       <button
         type="button"
         onClick={() => onAmp(32)}
@@ -280,7 +276,7 @@ function MeggerStep({
         </li>
         <li>Micrologic {breaker.microLogicSerialNumber || "—"}</li>
       </ul>
-      <p className="text-sm text-neutral-600">This MCCB ON, others off. Pass = &gt;500mohm on the PDF.</p>
+      <p className="text-sm text-neutral-600">This MCCB ON, others off.</p>
       <IrPassFail
         readings={test.irTest}
         onChange={(irTest) => onTest({ ...test, irTest })}

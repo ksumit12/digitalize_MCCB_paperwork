@@ -5,19 +5,19 @@ import Link from "next/link";
 const NEXT: Record<string, { href: (id: string) => string; label: string } | undefined> = {
   install: {
     href: (id) => `/frames/${id}/ancillary`,
-    label: "Go on to lights, exit lights & wiring",
+    label: "Lights & wiring",
   },
   ancillary: {
     href: (id) => `/frames/${id}/testing`,
-    label: "Go on to electrical testing",
+    label: "Electrical testing",
   },
   testing: {
     href: (id) => `/frames/${id}/handover`,
-    label: "Go on to QA handover",
+    label: "Handover",
   },
   handover: {
     href: (id) => `/frames/${id}/more`,
-    label: "Go on to Office / print",
+    label: "Office",
   },
 };
 
