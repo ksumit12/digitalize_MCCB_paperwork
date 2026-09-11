@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-paper text-ink antialiased;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+@media print {
+  nav,
+  .no-print {
+    display: none !important;
+  }
+}
