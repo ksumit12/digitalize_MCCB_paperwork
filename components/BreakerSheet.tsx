@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
 import { SignPick } from "@/components/SignPick";
@@ -38,10 +38,6 @@ export function BreakerSheet({
   onNext?: () => void;
 }) {
   const [step, setStep] = useState<Step>(() => (mode === "testing" ? "megger" : stepFor(breaker)));
-
-  useEffect(() => {
-    setStep(mode === "testing" ? "megger" : stepFor(breaker));
-  }, [slot, mode]);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-paper">

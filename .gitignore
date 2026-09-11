@@ -5,3 +5,5 @@ out
 *.log
 tsconfig.tsbuildinfo
 lib/pdf.ts.bak
+serials-inbox/*
+!serials-inbox/.gitkeep

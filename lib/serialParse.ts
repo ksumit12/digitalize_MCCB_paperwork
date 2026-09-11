@@ -1,12 +1,11 @@
 const WX_RE = /WX\d{8,}/gi;
-const MCCB_RE = /\d(?:CEF|CHI|CH|CE)\d{7,11}/gi;
 const SHUNT_RE = /TC-?\d{4}(?:-W\d{1,2}-\d(?:-[A-Z0-9]+)?)?/gi;
 
 function normalizeOcr(raw: string): string {
   return String(raw || "")
     .toUpperCase()
     .replace(/O/g, "0")
-    .replace(/[^A-Z0-9-]+/g, "");
+    .replace(/[^A-Z0-9]+/g, "");
 }
 
 export function looksLikeUrl(value: string): boolean {
@@ -27,12 +26,60 @@ function uniq(values: string[]): string[] {
 
 export type SerialKind = "mccb" | "ml" | "shunt";
 
-function tidyMccb(value: string): string | null {
-  const s = value.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/S$/, "");
-  const m = s.match(/^(\d)(CEF|CHI|CH|CE)(\d{7,11})$/);
-  if (!m) return null;
-  if (m[1] + m[2] === "NSX") return null;
-  return `${m[1]}${m[2]}${m[3]}`;
+export function looksLikeCatalog(value: string): boolean {
+  const s = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^C\d{2}[A-Z]/.test(s) || /^NSX/.test(s) || /^LV/.test(s) || /D100E/.test(s);
+}
+
+function prepareMccb(raw: string): string {
+  return String(raw || "")
+    .toUpperCase()
+    .replace(/O/g, "0")
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+function asFirst(ch: string): string | null {
+  if (/[0-9]/.test(ch)) return ch;
+  if (ch === "B") return "8";
+  if (ch === "S") return "5";
+  return null;
+}
+
+function asLetter(ch: string): string | null {
+  if (ch === "1" || ch === "|") return "I";
+  if (ch === "0") return null;
+  if (ch >= "A" && ch <= "Z") return ch;
+  return null;
+}
+
+function asTailDigit(ch: string): string | null {
+  if (/[0-9]/.test(ch)) return ch;
+  if (ch === "I" || ch === "|") return "1";
+  return null;
+}
+
+/** 1 digit + any 3 letters (never O) + 7 digits. */
+export function tidyMccb(value: string): string | null {
+  const s = prepareMccb(value);
+  if (s.length !== 11) return null;
+  if (looksLikeCatalog(s)) return null;
+  const first = asFirst(s[0]);
+  const letters = [asLetter(s[1]), asLetter(s[2]), asLetter(s[3])];
+  const tail = [...s.slice(4)].map(asTailDigit);
+  if (!first || letters.some((ch) => !ch) || tail.some((ch) => !ch)) return null;
+  const mid = letters.join("");
+  if (mid === "NSX" || mid === "C10") return null;
+  return `${first}${mid}${tail.join("")}`;
+}
+
+function mccbScore(serial: string): number {
+  const mid = serial.slice(1, 4);
+  const tail = serial.slice(4);
+  return (
+    new Set(mid).size * 10 +
+    (tail.startsWith("0") ? 15 : 0) +
+    (mid === "III" || mid === "LLL" || mid === "TCH" ? -20 : 0)
+  );
 }
 
 export function serialCandidates(raw: string, kind: SerialKind): string[] {
@@ -41,8 +88,8 @@ export function serialCandidates(raw: string, kind: SerialKind): string[] {
 
   if (kind === "ml") {
     const fromWx = [...spaced.matchAll(WX_RE), ...compact.matchAll(/WX\d{8,}/g)].map((m) => m[0]);
-    const fromQr = looksLikeUrl(raw) ? parseMicrologicSerial(raw) : null;
-    return uniq([...fromWx, ...(fromQr ? [fromQr] : [])]).filter((v) => /^WX\d{8,}$/.test(v));
+    const parsed = parseMicrologicSerial(raw);
+    return uniq([...fromWx, ...(parsed ? [parsed] : [])]).filter((v) => /^WX\d{8,}$/.test(v));
   }
 
   if (kind === "shunt") {
@@ -52,19 +99,13 @@ export function serialCandidates(raw: string, kind: SerialKind): string[] {
     return uniq(hits);
   }
 
-  const blobs = [spaced.replace(/[^A-Z0-9]+/g, ""), compact];
   const found: string[] = [];
-  for (const blob of blobs) {
-    for (const m of blob.matchAll(/\d(?:CEF|CHI|CH|CE)\d{7,11}/g)) {
-      const tidy = tidyMccb(m[0]);
-      if (tidy) found.push(tidy);
-    }
-  }
-  for (const m of spaced.matchAll(MCCB_RE)) {
-    const tidy = tidyMccb(m[0]);
+  const blob = prepareMccb(raw);
+  for (let i = 0; i + 11 <= blob.length; i++) {
+    const tidy = tidyMccb(blob.slice(i, i + 11));
     if (tidy) found.push(tidy);
   }
-  return uniq(found);
+  return uniq(found).sort((a, b) => mccbScore(b) - mccbScore(a));
 }
 
 export function parseMccbSerial(raw: string): string | null {
@@ -81,7 +122,6 @@ export function parseKind(raw: string, kind: SerialKind): string | null {
   return parseMccbSerial(raw);
 }
 
-/** Extract a Micrologic serial from a QR payload or OCR. Never save leftover URLs. */
 export function parseMicrologicSerial(raw: string): string | null {
   const trimmed = String(raw || "").trim();
   if (!trimmed) return null;
@@ -121,6 +161,5 @@ export function parseMicrologicSerial(raw: string): string | null {
   const compact = normalizeOcr(trimmed);
   const wx = compact.match(/WX\d{8,}/);
   if (wx) return wx[0];
-
   return null;
 }

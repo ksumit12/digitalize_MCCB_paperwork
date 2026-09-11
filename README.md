@@ -12,13 +12,13 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Camera QR/OCR needs localhost (or HTTPS).
+Open [http://localhost:3000](http://localhost:3000). Camera QR / MCCB photo needs localhost (or HTTPS).
 
 ## Flow
 
 1. New frame — Shepherd / ACTSW IDs, module serial, INT/AUS, start date/time
 2. Install checklist + CBSDS A–D
-3. Per-breaker serials (typed, Micrologic QR, MCCB green-sticker OCR + confirm)
+3. Per-breaker serials (typed, Micrologic QR, MCCB lime-sticker photo + confirm)
 4. Ancillary circuits
 5. Electrical testing (frame IR, A1–D8 IR/polarity, shunt trip live test)
 6. Handover + Download PDF / Print

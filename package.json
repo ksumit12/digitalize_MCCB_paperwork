@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start",
-    "test:serials": "node scripts/read-serials.mjs"
+    "start": "next start"
   },
   "dependencies": {
     "dexie": "^4.0.11",
@@ -14,8 +13,7 @@
     "next": "^15.5.2",
     "pdf-lib": "^1.17.1",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "tesseract.js": "^6.0.1"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
@@ -23,6 +21,7 @@
     "@types/react-dom": "^19.1.6",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
+    "sharp": "^0.35.4",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3"
   }

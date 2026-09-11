@@ -29,6 +29,8 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   const phase: FramePhase = frame.phase === "testing" ? "testing" : "installation";
   const testing = phase === "testing";
   const name = frameLabel(frame);
+  const breaker = slot ? getBreaker(frame, slot.label, slot.position) : undefined;
+  const test = slot ? getTest(frame, slot.label, slot.position) : undefined;
 
   return (
     <main className="mx-auto max-w-lg px-3 pb-8 pt-4">
@@ -92,11 +94,12 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
         }}
       />
 
-      {slot ? (
+      {slot && breaker && test ? (
         <BreakerSheet
+          key={`${slot.label}${slot.position}`}
           slot={`${slot.label}${slot.position}`}
-          breaker={getBreaker(frame, slot.label, slot.position)}
-          test={getTest(frame, slot.label, slot.position)}
+          breaker={breaker}
+          test={test}
           mode={phase}
           onBreaker={(b) => update((f) => patchBreaker(f, slot.label, slot.position, b))}
           onTest={(t) =>

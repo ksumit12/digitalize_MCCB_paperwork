@@ -36,12 +36,12 @@ export function parseSlot(raw: string | null): { label: CbsdsLabel; position: nu
   return { label: m[1].toUpperCase() as CbsdsLabel, position: Number(m[2]) };
 }
 
-export function getBreaker(frame: Frame, label: CbsdsLabel, position: number): BreakerPosition {
-  return frame.cbsds.find((c) => c.label === label)!.breakerPositions[position - 1];
+export function getBreaker(frame: Frame, label: CbsdsLabel, position: number): BreakerPosition | undefined {
+  return frame.cbsds.find((c) => c.label === label)?.breakerPositions[position - 1];
 }
 
-export function getTest(frame: Frame, label: CbsdsLabel, position: number): BreakerTest {
-  return frame.electricalTesting.perBreakerTest[label][position - 1];
+export function getTest(frame: Frame, label: CbsdsLabel, position: number): BreakerTest | undefined {
+  return frame.electricalTesting.perBreakerTest[label]?.[position - 1];
 }
 
 export function patchBreaker(
