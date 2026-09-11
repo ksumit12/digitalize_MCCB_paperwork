@@ -8,6 +8,7 @@ export type WorkStatus = "installing" | "testing" | "submitted";
 
 export type ChecklistItem = {
   ticked: boolean;
+  na?: boolean;
   installerSign: string;
 };
 
@@ -119,6 +120,7 @@ export type Handover = {
   benmaxSign: string;
   installChecklistComplete: boolean;
   electricalTestingComplete: boolean;
+  notes?: string;
 };
 
 export type InstallChecklist = {

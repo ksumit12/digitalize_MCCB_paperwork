@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import { PdfButtons } from "@/components/PdfButtons";
-import { CheckRow, Field, Screen, TextInput } from "@/components/ui";
+import { Field, Screen, TextInput } from "@/components/ui";
 import { useFrame } from "@/lib/useFrame";
 
 export default function HandoverPage({ params }: { params: Promise<{ id: string }> }) {
@@ -70,20 +70,67 @@ export default function HandoverPage({ params }: { params: Promise<{ id: string 
           />
         </Field>
       </div>
-      <CheckRow
-        label="All Install Checklist items completed and initialled"
-        checked={h.installChecklistComplete}
-        onChange={(v) =>
-          update((f) => ({ ...f, handover: { ...f.handover, installChecklistComplete: v } }))
-        }
-      />
-      <CheckRow
-        label="All Electrical testing items completed and initialled"
-        checked={h.electricalTestingComplete}
-        onChange={(v) =>
-          update((f) => ({ ...f, handover: { ...f.handover, electricalTestingComplete: v } }))
-        }
-      />
+      <p className="text-sm font-medium">All Install Checklist items completed and initialled</p>
+      <div className="grid grid-cols-2 gap-2">
+        {(["pass", "fail"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() =>
+              update((f) => ({
+                ...f,
+                handover: { ...f.handover, installChecklistComplete: v === "pass" },
+              }))
+            }
+            className={`rounded-2xl py-4 text-lg font-semibold ${
+              h.installChecklistComplete
+                ? v === "pass"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-zinc-100"
+                : v === "fail"
+                  ? "bg-red-600 text-white"
+                  : "bg-zinc-100"
+            }`}
+          >
+            {v === "pass" ? "QA Passed" : "QA Failed"}
+          </button>
+        ))}
+      </div>
+      <p className="text-sm font-medium">All Electrical testing items completed and initialled</p>
+      <div className="grid grid-cols-2 gap-2">
+        {(["pass", "fail"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() =>
+              update((f) => ({
+                ...f,
+                handover: { ...f.handover, electricalTestingComplete: v === "pass" },
+              }))
+            }
+            className={`rounded-2xl py-4 text-lg font-semibold ${
+              h.electricalTestingComplete
+                ? v === "pass"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-zinc-100"
+                : v === "fail"
+                  ? "bg-red-600 text-white"
+                  : "bg-zinc-100"
+            }`}
+          >
+            {v === "pass" ? "QA Passed" : "QA Failed"}
+          </button>
+        ))}
+      </div>
+      <Field label="Notes (required if anything failed)">
+        <textarea
+          value={h.notes ?? ""}
+          onChange={(e) =>
+            update((f) => ({ ...f, handover: { ...f.handover, notes: e.target.value } }))
+          }
+          className="min-h-28 w-full rounded-xl border border-rule px-3 py-3"
+        />
+      </Field>
       <PdfButtons frame={frame} />
     </Screen>
   );

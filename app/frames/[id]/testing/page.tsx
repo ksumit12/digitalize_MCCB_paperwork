@@ -1,39 +1,14 @@
 "use client";
 
 import { use, useState } from "react";
+import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
 import { Field, PassFailSelect, Screen, TextInput } from "@/components/ui";
-import { IR_ROWS, POLARITY_ROWS } from "@/lib/ir";
 import { serialsDiffer } from "@/lib/status";
 import { useFrame } from "@/lib/useFrame";
-import type { BreakerTest, CbsdsLabel, IrReadings, PassFail } from "@/lib/types";
+import type { BreakerTest, CbsdsLabel, PassFail } from "@/lib/types";
 
 const LABELS: CbsdsLabel[] = ["A", "B", "C", "D"];
-
-function IrGrid({
-  readings,
-  onChange,
-}: {
-  readings: IrReadings;
-  onChange: (key: keyof IrReadings, value: string) => void;
-}) {
-  return (
-    <div className="grid gap-2">
-      {IR_ROWS.map((row) => (
-        <label key={row.key} className="grid grid-cols-[1fr_6rem] items-center gap-2 text-sm">
-          <span>{row.label}</span>
-          <input
-            inputMode="decimal"
-            value={readings[row.key]}
-            onChange={(e) => onChange(row.key, e.target.value)}
-            className="rounded-lg border border-rule px-2 py-1.5"
-            placeholder="MΩ"
-          />
-        </label>
-      ))}
-    </div>
-  );
-}
 
 export default function TestingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -62,20 +37,9 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
 
   return (
     <Screen title="Electrical testing" savedAt={savedAt}>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Shepherd Frame ID">
-          <TextInput
-            value={frame.shepherdFrameId}
-            onChange={(e) => update((f) => ({ ...f, shepherdFrameId: e.target.value }))}
-          />
-        </Field>
-        <Field label="ACTSW Frame ID">
-          <TextInput
-            value={frame.actswFrameId}
-            onChange={(e) => update((f) => ({ ...f, actswFrameId: e.target.value }))}
-          />
-        </Field>
-      </div>
+      <p className="text-sm text-neutral-600">
+        Tap Pass or Fail, then drag to paint the rest. Paperwork prints &gt;500mohm on pass.
+      </p>
       <section className="space-y-2 rounded-xl border border-rule bg-white p-3">
         <h2 className="font-medium">Visual inspection P/F</h2>
         <div className="grid grid-cols-4 gap-2">
@@ -98,19 +62,20 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
         </div>
       </section>
       <section className="space-y-3 rounded-xl border border-rule bg-white p-3">
-        <h2 className="font-medium">IR test — all MCCBs OFF, FCL fuses pulled (MΩ)</h2>
+      <h2 className="font-medium">IR test — all MCCBs OFF, FCL fuses pulled</h2>
+        <p className="text-sm text-neutral-600">Pass/fail on screen. Print writes &gt;500mohm when it passes.</p>
         {LABELS.map((l) => (
           <details key={l} className="rounded-lg border border-rule p-2">
             <summary className="cursor-pointer font-medium">CBSDS {l}</summary>
             <div className="mt-2">
-              <IrGrid
+              <IrPassFail
                 readings={et.perCbsdsIr[l].readings}
-                onChange={(key, value) =>
+                onChange={(readings) =>
                   patchEt({
                     ...et,
                     perCbsdsIr: {
                       ...et.perCbsdsIr,
-                      [l]: { readings: { ...et.perCbsdsIr[l].readings, [key]: value } },
+                      [l]: { readings },
                     },
                   })
                 }
@@ -175,28 +140,14 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
                       Micrologic serial differs from install. Check the breaker is in the right slot.
                     </p>
                   ) : null}
-                  <IrGrid
+                  <IrPassFail
                     readings={test.irTest}
-                    onChange={(k, v) =>
-                      patchBreaker(l, i, { ...test, irTest: { ...test.irTest, [k]: v } })
-                    }
+                    onChange={(irTest) => patchBreaker(l, i, { ...test, irTest })}
                   />
-                  <div className="space-y-2">
-                    {POLARITY_ROWS.map((row) => (
-                      <label key={row.key} className="flex items-center justify-between gap-2 text-sm">
-                        {row.label}
-                        <PassFailSelect
-                          value={test.polarityTest[row.key]}
-                          onChange={(v) =>
-                            patchBreaker(l, i, {
-                              ...test,
-                              polarityTest: { ...test.polarityTest, [row.key]: v },
-                            })
-                          }
-                        />
-                      </label>
-                    ))}
-                  </div>
+                  <PolarityPassFail
+                    values={test.polarityTest}
+                    onChange={(polarityTest) => patchBreaker(l, i, { ...test, polarityTest })}
+                  />
                   <Field label="Sign">
                     <TextInput
                       value={test.sign}

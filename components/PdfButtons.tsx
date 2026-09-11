@@ -24,7 +24,7 @@ export function PdfButtons({ frame }: { frame: Frame }) {
         type="button"
         disabled={busy}
         onClick={async () => downloadPdfBytes(await bytes(), name)}
-        className="rounded-lg bg-ink px-4 py-2.5 text-sm text-white"
+        className="rounded-2xl bg-ink px-4 py-3.5 text-base text-white"
       >
         {busy ? "Building…" : "Download PDF"}
       </button>
@@ -32,7 +32,7 @@ export function PdfButtons({ frame }: { frame: Frame }) {
         type="button"
         disabled={busy}
         onClick={async () => printPdfBytes(await bytes())}
-        className="rounded-lg border border-ink px-4 py-2.5 text-sm"
+        className="rounded-2xl border border-ink bg-white px-4 py-3.5 text-base"
       >
         Print
       </button>

@@ -82,6 +82,58 @@ export function PassFailSelect({
   );
 }
 
+export function YesNaRow({
+  label,
+  ticked,
+  na,
+  sign,
+  onYes,
+  onNa,
+  onSign,
+}: {
+  label: string;
+  ticked: boolean;
+  na?: boolean;
+  sign?: string;
+  onYes: () => void;
+  onNa: () => void;
+  onSign?: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-2xl border border-rule bg-white p-3">
+      <p className="text-base font-medium leading-snug">{label}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onYes}
+          className={`rounded-2xl py-4 text-lg font-semibold ${
+            ticked && !na ? "bg-emerald-600 text-white" : "bg-zinc-100"
+          }`}
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={onNa}
+          className={`rounded-2xl py-4 text-lg font-semibold ${
+            na ? "bg-neutral-700 text-white" : "bg-zinc-100"
+          }`}
+        >
+          N/A
+        </button>
+      </div>
+      {onSign ? (
+        <input
+          value={sign ?? ""}
+          onChange={(e) => onSign(e.target.value)}
+          placeholder="Initials"
+          className="w-full rounded-xl border border-rule px-3 py-3"
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function Screen({
   title,
   savedAt,

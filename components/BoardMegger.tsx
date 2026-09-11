@@ -1,6 +1,6 @@
 "use client";
 
-import { IR_ROWS } from "@/lib/ir";
+import { IrPassFail } from "@/components/PassFailPaint";
 import type { CbsdsLabel, Frame, IrReadings, PassFail } from "@/lib/types";
 
 export function BoardMegger({
@@ -28,7 +28,7 @@ export function BoardMegger({
         <span className="w-8" />
       </header>
       <div className="flex-1 overflow-auto px-4 pb-8">
-        <p className="mb-3 text-sm text-neutral-600">All MCCBs OFF, FCL fuses pulled. MΩ.</p>
+        <p className="mb-3 text-sm text-neutral-600">All MCCBs OFF, FCL fuses pulled. Pass prints as &gt;500mohm.</p>
         <div className="mb-4 rounded-2xl bg-white p-3 text-sm">
           <p>Manufacturer: {frame.manufacturer || "—"}</p>
           <p>
@@ -49,21 +49,10 @@ export function BoardMegger({
             </button>
           ))}
         </div>
-        <div className="space-y-2">
-          {IR_ROWS.map((row) => (
-            <label key={row.key} className="flex items-center gap-2 text-xs">
-              <span className="flex-1">{row.label}</span>
-              <input
-                inputMode="decimal"
-                value={readings[row.key]}
-                onChange={(e) =>
-                  onChange({ ...readings, [row.key]: e.target.value }, visual, sign)
-                }
-                className="w-20 rounded-xl border border-rule bg-white px-2 py-2"
-              />
-            </label>
-          ))}
-        </div>
+        <IrPassFail
+          readings={readings}
+          onChange={(next) => onChange(next, visual, sign)}
+        />
         <input
           value={sign}
           onChange={(e) => onChange(readings, visual, e.target.value)}

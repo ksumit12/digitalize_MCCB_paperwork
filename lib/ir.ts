@@ -38,3 +38,27 @@ export function emptyIr(): IrReadings {
 export function irHasValue(ir: IrReadings): boolean {
   return Object.values(ir).some((v) => v.trim() !== "");
 }
+
+/** Screen stores pass/fail; paperwork prints >500mohm on pass. */
+export function irForPdf(value: string): string {
+  const t = value.trim().toLowerCase();
+  if (!t) return "";
+  if (t === "pass" || t === "p" || t === "yes") return ">500mohm";
+  if (t === "fail" || t === "f") return "FAIL";
+  return value.trim();
+}
+
+export function fillIr(value: "pass" | "fail"): IrReadings {
+  return {
+    l1ToEarth: value,
+    l2ToEarth: value,
+    l3ToEarth: value,
+    nToEarth: value,
+    l1ToNeutral: value,
+    l2ToNeutral: value,
+    l3ToNeutral: value,
+    l1ToL2: value,
+    l1ToL3: value,
+    l2ToL3: value,
+  };
+}

@@ -172,6 +172,7 @@ export function createEmptyFrame(opts?: {
       benmaxSign: "",
       installChecklistComplete: false,
       electricalTestingComplete: false,
+      notes: "",
     },
   };
 }

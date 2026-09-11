@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
-import { needsShuntTrip } from "@/lib/emptyFrame";
 import { emptySlot, serialsComplete, setAmp } from "@/lib/breaker";
-import { IR_ROWS, POLARITY_ROWS } from "@/lib/ir";
-import type { BreakerPosition, BreakerTest, PassFail } from "@/lib/types";
+import { needsShuntTrip } from "@/lib/emptyFrame";
+import type { BreakerPosition, BreakerTest } from "@/lib/types";
 
 type Step = "amp" | "mccb" | "ml" | "shunt" | "done" | "megger";
 
@@ -279,49 +279,16 @@ function MeggerStep({
         </li>
         <li>Micrologic {breaker.microLogicSerialNumber || "—"}</li>
       </ul>
-      <p className="text-sm text-neutral-600">This MCCB ON, others off. MΩ.</p>
-      <div className="space-y-2">
-        {IR_ROWS.map((row) => (
-          <label key={row.key} className="flex items-center gap-2 text-xs">
-            <span className="flex-1">{row.label}</span>
-            <input
-              inputMode="decimal"
-              value={test.irTest[row.key]}
-              onChange={(e) =>
-                onTest({ ...test, irTest: { ...test.irTest, [row.key]: e.target.value } })
-              }
-              className="w-20 rounded-xl border border-rule bg-white px-2 py-2"
-            />
-          </label>
-        ))}
-      </div>
+      <p className="text-sm text-neutral-600">This MCCB ON, others off. Pass = &gt;500mohm on the PDF.</p>
+      <IrPassFail
+        readings={test.irTest}
+        onChange={(irTest) => onTest({ ...test, irTest })}
+      />
       <p className="text-sm font-medium">Polarity</p>
-      {POLARITY_ROWS.map((row) => (
-        <div key={row.key} className="flex items-center gap-2">
-          <span className="flex-1 text-sm">{row.label.replace(" Pass/Fail", "")}</span>
-          {(["pass", "fail"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() =>
-                onTest({
-                  ...test,
-                  polarityTest: { ...test.polarityTest, [row.key]: v as PassFail },
-                })
-              }
-              className={`rounded-xl px-3 py-2 text-sm ${
-                test.polarityTest[row.key] === v
-                  ? v === "pass"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-red-600 text-white"
-                  : "bg-white"
-              }`}
-            >
-              {v === "pass" ? "Pass" : "Fail"}
-            </button>
-          ))}
-        </div>
-      ))}
+      <PolarityPassFail
+        values={test.polarityTest}
+        onChange={(polarityTest) => onTest({ ...test, polarityTest })}
+      />
       <label className="block text-sm">
         Sign-off
         <input

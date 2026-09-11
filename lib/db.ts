@@ -60,6 +60,15 @@ export function withFrameDefaults(frame: Frame): Frame {
     frameSlot: frame.frameSlot || frame.stringId || "",
     stringId: frame.stringId || frame.frameSlot || "",
     submitted: Boolean(frame.submitted),
+    moduleFrameSerialNumber:
+      frame.moduleFrameSerialNumber?.trim() ||
+      [frame.stringKey?.trim() || "1", frame.frameSlot || frame.stringId || ""]
+        .filter(Boolean)
+        .join("-"),
+    handover: {
+      ...frame.handover,
+      notes: frame.handover?.notes ?? "",
+    },
   };
 }
 

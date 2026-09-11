@@ -13,7 +13,7 @@ export function FrameNav({ frameId }: { frameId: string }) {
     <nav className="no-print fixed bottom-0 left-0 right-0 z-30 border-t border-rule bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <div className="mx-auto grid max-w-lg grid-cols-3">
         <Link href="/" className="py-3 text-center text-sm text-neutral-500">
-          Frames
+          Home
         </Link>
         <Link
           href={`${base}/map`}
