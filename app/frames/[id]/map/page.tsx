@@ -33,11 +33,11 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
     <main className="mx-auto max-w-lg px-3 pb-8 pt-4">
       <div
         className={`mb-4 rounded-2xl px-4 py-3 ${
-          testing ? "bg-emerald-700 text-white" : "bg-ink text-white"
+          frame.submitted ? "bg-sky-700 text-white" : testing ? "bg-emerald-700 text-white" : "bg-ink text-white"
         }`}
       >
         <p className="text-xs uppercase tracking-wide opacity-80">
-          {testing ? "Testing phase" : "Installation phase"}
+          {frame.submitted ? "Submitted" : testing ? "Testing" : "Installing"}
         </p>
         <h1 className="text-xl font-semibold">{name}</h1>
         <p className="text-xs opacity-80">
@@ -47,21 +47,34 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
         </p>
       </div>
 
-      {testing ? (
-        <button
-          type="button"
-          onClick={() => update((f) => ({ ...f, phase: "installation" }))}
-          className="mb-3 w-full rounded-2xl border border-rule bg-white py-3 text-sm"
-        >
-          Return to installation
-        </button>
+      {frame.submitted ? (
+        <p className="mb-3 rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          Submitted — office can see this as done. Tap tiles for detail.
+        </p>
+      ) : testing ? (
+        <div className="mb-3 space-y-2">
+          <button
+            type="button"
+            onClick={() => update((f) => ({ ...f, submitted: true }))}
+            className="w-full rounded-2xl bg-sky-600 py-3 text-sm font-medium text-white"
+          >
+            Submit
+          </button>
+          <button
+            type="button"
+            onClick={() => update((f) => ({ ...f, phase: "installation" }))}
+            className="w-full rounded-2xl border border-rule bg-white py-3 text-sm"
+          >
+            Back to installing
+          </button>
+        </div>
       ) : (
         <button
           type="button"
           onClick={() => update((f) => ({ ...f, phase: "testing" }))}
           className="mb-3 w-full rounded-2xl bg-emerald-700 py-3 text-sm font-medium text-white"
         >
-          Move to Testing Phase
+          Move to testing
         </button>
       )}
 

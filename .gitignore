@@ -3,4 +3,5 @@ node_modules
 .tools
 out
 *.log
-.DS_Store
+tsconfig.tsbuildinfo
+lib/pdf.ts.bak

@@ -1,16 +1,25 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { lastInstaller, rememberLastInstaller } from "@/lib/crew";
-import { lookupInstaller, normalizeInitials, saveFrame, saveInstaller } from "@/lib/db";
+import {
+  findFrameBySlot,
+  lookupInstaller,
+  normalizeInitials,
+  saveFrame,
+  saveInstaller,
+} from "@/lib/db";
 import { createEmptyFrame } from "@/lib/emptyFrame";
+import { STRING_LEVELS, parseFrameSlot } from "@/lib/stringLayout";
 
-const LEVELS = [7, 6, 5, 4, 3, 2, 1] as const;
-
-export default function NewFramePage() {
+function NewFrameForm() {
   const router = useRouter();
-  const [stringId, setStringId] = useState("");
+  const search = useSearchParams();
+  const presetKey = search.get("string")?.trim() || "";
+  const presetSlot = parseFrameSlot(search.get("slot") || "");
+  const [stringKey, setStringKey] = useState(presetKey);
+  const [stringId, setStringId] = useState(presetSlot || "");
   const [initials, setInitials] = useState("");
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
@@ -36,38 +45,50 @@ export default function NewFramePage() {
     }
   }
 
+  const slot = parseFrameSlot(stringId) || stringId;
+
   return (
     <main className="mx-auto max-w-lg space-y-5 px-4 py-6">
-      <h1 className="text-2xl font-semibold">Which string?</h1>
-      <p className="text-sm text-neutral-600">
-        Same as the drawing: left stack L, right stack R, 7 at the top.
-      </p>
-      <div className="grid grid-cols-[2rem_1fr_1fr] gap-2">
-        <div />
-        <p className="text-center text-xs font-medium text-neutral-500">L</p>
-        <p className="text-center text-xs font-medium text-neutral-500">R</p>
-        {LEVELS.map((n) => (
-          <div key={n} className="contents">
-            <p className="flex items-center justify-center text-sm font-semibold text-neutral-400">{n}</p>
-            {(["L", "R"] as const).map((hand) => {
-              const id = `${n}${hand}`;
-              const on = stringId === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setStringId(id)}
-                  className={`h-12 rounded-xl text-lg font-bold ${
-                    on ? "bg-ink text-white" : "bg-white ring-1 ring-rule"
-                  }`}
-                >
-                  {id}
-                </button>
-              );
-            })}
+      <h1 className="text-2xl font-semibold">
+        {presetKey && presetSlot ? `${presetKey} · ${presetSlot}` : "Which frame?"}
+      </h1>
+      {!presetSlot ? (
+        <>
+          <input
+            value={stringKey}
+            onChange={(e) => setStringKey(e.target.value)}
+            placeholder="String no. e.g. 4"
+            className="w-full rounded-2xl border border-rule bg-white px-4 py-3"
+          />
+          <p className="text-sm text-neutral-600">Left stack L, right stack R, 7 at the top.</p>
+          <div className="grid grid-cols-[2rem_1fr_1fr] gap-2">
+            <div />
+            <p className="text-center text-xs font-medium text-neutral-500">L</p>
+            <p className="text-center text-xs font-medium text-neutral-500">R</p>
+            {STRING_LEVELS.map((n) => (
+              <div key={n} className="contents">
+                <p className="flex items-center justify-center text-sm font-semibold text-neutral-400">{n}</p>
+                {(["L", "R"] as const).map((hand) => {
+                  const id = `${n}${hand}`;
+                  const on = stringId === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setStringId(id)}
+                      className={`h-12 rounded-xl text-lg font-bold ${
+                        on ? "bg-ink text-white" : "bg-white ring-1 ring-rule"
+                      }`}
+                    >
+                      {id}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      ) : null}
 
       <div className="space-y-3">
         <p className="text-sm font-medium">Who is filling this out?</p>
@@ -84,25 +105,32 @@ export default function NewFramePage() {
             setNameTouched(true);
             setName(e.target.value);
           }}
-          placeholder="Installer name (change if needed)"
+          placeholder="Name (change if needed)"
           className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg"
         />
-        <p className="text-xs text-neutral-500">
-          Initials look up your saved name. You can still type a different name for this frame.
-        </p>
       </div>
 
       <button
         type="button"
-        disabled={saving || !stringId || !name.trim()}
+        disabled={saving || !slot || !name.trim() || !stringKey.trim()}
         className="w-full rounded-2xl bg-ink py-4 text-lg text-white disabled:opacity-30"
         onClick={async () => {
           setSaving(true);
-          const installer = { initials: normalizeInitials(initials) || name.slice(0, 2).toUpperCase(), name: name.trim() };
+          const existing = await findFrameBySlot(stringKey.trim(), slot);
+          if (existing) {
+            router.push(`/frames/${existing.id}/map`);
+            return;
+          }
+          const installer = {
+            initials: normalizeInitials(initials) || name.slice(0, 2).toUpperCase(),
+            name: name.trim(),
+          };
           await saveInstaller(installer);
           rememberLastInstaller(installer);
           const frame = createEmptyFrame({
-            stringId,
+            stringKey: stringKey.trim(),
+            frameSlot: slot,
+            stringId: slot,
             installerInitials: installer.initials,
             installerName: installer.name,
           });
@@ -110,8 +138,16 @@ export default function NewFramePage() {
           router.push(`/frames/${frame.id}/map`);
         }}
       >
-        Open {stringId || "board"}
+        Open {stringKey && slot ? `${stringKey} · ${slot}` : "board"}
       </button>
     </main>
+  );
+}
+
+export default function NewFramePage() {
+  return (
+    <Suspense fallback={<p className="p-6 text-sm">Loading…</p>}>
+      <NewFrameForm />
+    </Suspense>
   );
 }

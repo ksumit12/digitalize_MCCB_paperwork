@@ -79,6 +79,8 @@ export function needsShuntTrip(amps: BreakerPosition["micrologicSettingAmps"]): 
 
 export function createEmptyFrame(opts?: {
   stringId?: string;
+  stringKey?: string;
+  frameSlot?: string;
   installerInitials?: string;
   installerName?: string;
 }): Frame {
@@ -91,7 +93,10 @@ export function createEmptyFrame(opts?: {
 
   return {
     id: generateId(),
-    stringId: opts?.stringId ?? "",
+    stringId: opts?.frameSlot ?? opts?.stringId ?? "",
+    stringKey: opts?.stringKey ?? "1",
+    frameSlot: opts?.frameSlot ?? opts?.stringId ?? "",
+    submitted: false,
     installerInitials: opts?.installerInitials ?? "",
     installerName: sign,
     shepherdFrameId: "",

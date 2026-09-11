@@ -4,6 +4,7 @@ export type PassFail = "pass" | "fail" | "";
 export type AmpSetting = 32 | 63 | 100 | "";
 export type Manufacturer = "RN Baker" | "SMBE" | "";
 export type FramePhase = "installation" | "testing";
+export type WorkStatus = "installing" | "testing" | "submitted";
 
 export type ChecklistItem = {
   ticked: boolean;
@@ -137,6 +138,9 @@ export type Installer = {
 export type Frame = {
   id: string;
   stringId?: string;
+  stringKey?: string;
+  frameSlot?: string;
+  submitted?: boolean;
   installerInitials?: string;
   installerName?: string;
   shepherdFrameId: string;

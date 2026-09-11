@@ -2,8 +2,13 @@ import type { Frame, Installer } from "./types";
 
 const LAST_KEY = "mccb-last-installer";
 
-export function frameLabel(frame: Pick<Frame, "stringId" | "moduleFrameSerialNumber" | "shepherdFrameId">): string {
-  return frame.stringId || frame.moduleFrameSerialNumber || frame.shepherdFrameId || "Frame";
+export function frameLabel(
+  frame: Pick<Frame, "stringKey" | "frameSlot" | "stringId" | "moduleFrameSerialNumber" | "shepherdFrameId">,
+): string {
+  const slot = frame.frameSlot || frame.stringId;
+  const key = frame.stringKey?.trim();
+  if (key && slot) return `${key} · ${slot}`;
+  return slot || frame.moduleFrameSerialNumber || frame.shepherdFrameId || "Frame";
 }
 
 export function applyInstallerName(frame: Frame, nextName: string, previousName = ""): Frame {
