@@ -144,7 +144,7 @@ export function SerialScanner({
               }}
               className="w-full rounded-2xl bg-ink py-5 text-lg font-medium text-white"
             >
-              Photo sticker
+              Scan sticker
             </button>
           ) : null}
           <input
@@ -194,7 +194,7 @@ export function SerialScanner({
               }}
               className="shrink-0 rounded-lg bg-ink px-3 py-2 text-sm text-white"
             >
-              Photo
+              Scan
             </button>
           ) : null}
         </div>

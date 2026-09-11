@@ -6,16 +6,10 @@ import { serialCandidates } from "@/lib/serialParse";
 
 type Box = { x: number; y: number; w: number; h: number };
 
-async function canvasFromFile(file: File) {
-  const bmp = await createImageBitmap(file);
-  const max = 1600;
-  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bmp.width * scale);
-  canvas.height = Math.round(bmp.height * scale);
-  canvas.getContext("2d")?.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  bmp.close();
-  return canvas;
+function guideBox(vw: number, vh: number): Box {
+  const w = vw * 0.9;
+  const h = Math.min(vh * 0.42, w / 2.6);
+  return { x: (vw - w) / 2, y: (vh - h) / 2, w, h };
 }
 
 function crop(src: HTMLCanvasElement, box: Box, maxSide = 640) {
@@ -31,15 +25,24 @@ function crop(src: HTMLCanvasElement, box: Box, maxSide = 640) {
   return out;
 }
 
-function normBox(a: { x: number; y: number }, b: { x: number; y: number }, w: number, h: number): Box {
-  const x = Math.max(0, Math.min(a.x, b.x));
-  const y = Math.max(0, Math.min(a.y, b.y));
-  return {
-    x: Math.round(x),
-    y: Math.round(y),
-    w: Math.round(Math.min(w - x, Math.abs(b.x - a.x))),
-    h: Math.round(Math.min(h - y, Math.abs(b.y - a.y))),
-  };
+function frameFromVideo(video: HTMLVideoElement) {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  canvas.getContext("2d")?.drawImage(video, 0, 0);
+  return canvas;
+}
+
+async function canvasFromFile(file: File) {
+  const bmp = await createImageBitmap(file);
+  const max = 1600;
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext("2d")?.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close();
+  return canvas;
 }
 
 export function MccbPhotoSheet({
@@ -49,60 +52,95 @@ export function MccbPhotoSheet({
   onClose: () => void;
   onSerial: (serial: string) => void;
 }) {
-  const stillRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const camGenRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
-  const stillCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dragRef = useRef<{ x: number; y: number } | null>(null);
-  const [hasStill, setHasStill] = useState(false);
-  const [cropBox, setCropBox] = useState<Box | null>(null);
   const [busy, setBusy] = useState(false);
-  const [hint, setHint] = useState("Take a photo of the lime serial sticker, then drag a box around it.");
+  const [camError, setCamError] = useState("");
+  const [hint, setHint] = useState("Fill the green box with the lime sticker, then Snap.");
   const [raw, setRaw] = useState("");
   const [guess, setGuess] = useState("");
 
-  const paintStill = useCallback((box?: Box | null) => {
-    const src = stillCanvasRef.current;
-    const dest = stillRef.current;
-    if (!src || !dest) return;
-    dest.width = src.width;
-    dest.height = src.height;
-    const ctx = dest.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(src, 0, 0);
-    if (!box || box.w < 4 || box.h < 4) return;
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(0, 0, dest.width, dest.height);
-    ctx.drawImage(src, box.x, box.y, box.w, box.h, box.x, box.y, box.w, box.h);
-    ctx.strokeStyle = "#22c55e";
-    ctx.lineWidth = Math.max(3, Math.round(dest.width / 400));
-    ctx.strokeRect(box.x, box.y, box.w, box.h);
+  const stopCam = useCallback(() => {
+    camGenRef.current += 1;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    videoRef.current?.pause();
+  }, []);
+
+  const startCam = useCallback(async () => {
+    setCamError("");
+    camGenRef.current += 1;
+    const gen = camGenRef.current;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      if (gen !== camGenRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = stream;
+      const video = videoRef.current;
+      if (!video) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      video.muted = true;
+      video.srcObject = stream;
+      await video.play();
+    } catch (e) {
+      if (gen !== camGenRef.current) return;
+      const name = e instanceof DOMException ? e.name : "";
+      if (name === "AbortError") return;
+      setCamError(e instanceof Error ? e.message : "Camera blocked");
+    }
   }, []);
 
   useEffect(() => {
-    paintStill(cropBox);
-  }, [cropBox, paintStill, hasStill]);
+    void startCam();
+    void getPaddleOcr().catch(() => undefined);
+    return () => stopCam();
+  }, [startCam, stopCam]);
 
-  function pointerToStill(e: React.PointerEvent<HTMLCanvasElement>) {
-    const canvas = stillRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const video = videoRef.current;
+      const overlay = overlayRef.current;
+      if (video && overlay && video.readyState >= 2 && video.videoWidth) {
+        overlay.width = video.videoWidth;
+        overlay.height = video.videoHeight;
+        const ctx = overlay.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          const box = guideBox(overlay.width, overlay.height);
+          ctx.fillStyle = "rgba(0,0,0,0.35)";
+          ctx.fillRect(0, 0, overlay.width, overlay.height);
+          ctx.clearRect(box.x, box.y, box.w, box.h);
+          ctx.strokeStyle = "#22c55e";
+          ctx.lineWidth = Math.max(4, overlay.width / 220);
+          ctx.strokeRect(box.x, box.y, box.w, box.h);
+        }
+      }
+      raf = requestAnimationFrame(tick);
     };
-  }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  async function readCrop() {
-    const frame = stillCanvasRef.current;
-    if (!frame || !cropBox || cropBox.w < 12 || cropBox.h < 8) {
-      setHint("Drag a box around the whole lime sticker first.");
-      return;
-    }
+  async function readCanvas(frame: HTMLCanvasElement, framed: boolean) {
     setBusy(true);
-    setHint("Reading… first time downloads models, then it stays on this phone.");
+    setHint("Reading…");
     try {
+      const region = framed ? guideBox(frame.width, frame.height) : { x: 0, y: 0, w: frame.width, h: frame.height };
       const paddle = await getPaddleOcr();
-      const [result] = await paddle.predict(crop(frame, cropBox), {
+      const [result] = await paddle.predict(crop(frame, region), {
         textDetLimitSideLen: 480,
         textRecognitionBatchSize: 1,
       });
@@ -110,7 +148,11 @@ export function MccbPhotoSheet({
       const parsed = serialCandidates(text, "mccb")[0] ?? "";
       setRaw(text.trim());
       setGuess(parsed);
-      setHint(parsed ? "Check the serial, then confirm." : "No 11-character serial in that crop — drag again or type it.");
+      setHint(
+        parsed
+          ? "Check the serial, then confirm."
+          : "No 11-character serial in the box — move closer and Snap again.",
+      );
     } catch (e) {
       setHint(e instanceof Error ? e.message : "Read failed");
     } finally {
@@ -122,74 +164,54 @@ export function MccbPhotoSheet({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
       <div className="max-h-[92dvh] w-full max-w-md overflow-auto rounded-2xl bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold">MCCB photo</h2>
+          <h2 className="font-semibold">MCCB sticker</h2>
           <button type="button" onClick={onClose} className="text-sm text-neutral-500">
             Close
           </button>
         </div>
         <p className="mb-3 text-sm text-neutral-600">{hint}</p>
+        {camError ? <p className="mb-2 text-sm text-red-700">{camError}</p> : null}
+
         <input
           ref={fileRef}
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = "";
-            if (!file) return;
-            void canvasFromFile(file).then((frame) => {
-              stillCanvasRef.current = frame;
-              setHasStill(true);
-              setCropBox(null);
-              setRaw("");
-              setGuess("");
-              setHint("Drag a box around the lime sticker.");
-              requestAnimationFrame(() => paintStill(null));
-            });
+            if (file) void canvasFromFile(file).then((frame) => readCanvas(frame, false));
           }}
         />
+
+        <div className="relative mb-3 overflow-hidden rounded-xl bg-black">
+          <video ref={videoRef} playsInline muted autoPlay className="w-full" />
+          <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+        </div>
+
         <div className="mb-3 flex gap-2">
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
-            className="flex-1 rounded-xl bg-ink py-3 text-white"
-          >
-            Take photo
-          </button>
-          <button
-            type="button"
-            disabled={busy || !cropBox}
-            onClick={() => void readCrop()}
+            disabled={busy}
+            onClick={() => {
+              const video = videoRef.current;
+              if (video?.videoWidth) void readCanvas(frameFromVideo(video), true);
+            }}
             className="flex-1 rounded-xl bg-emerald-700 py-3 text-white disabled:opacity-40"
           >
-            {busy ? "Reading…" : "Read sticker"}
+            {busy ? "Reading…" : "Snap"}
+          </button>
+          <button type="button" onClick={() => void startCam()} className="rounded-xl border border-rule px-3 py-3">
+            Camera
+          </button>
+          <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-rule px-3 py-3">
+            Album
           </button>
         </div>
-        {hasStill ? (
-          <canvas
-            ref={stillRef}
-            className="mb-3 w-full cursor-crosshair touch-none rounded-xl bg-black"
-            onPointerDown={(e) => {
-              const p = pointerToStill(e);
-              if (!p) return;
-              (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
-              dragRef.current = p;
-              setCropBox({ x: p.x, y: p.y, w: 1, h: 1 });
-            }}
-            onPointerMove={(e) => {
-              if (!dragRef.current) return;
-              const p = pointerToStill(e);
-              const src = stillCanvasRef.current;
-              if (!p || !src) return;
-              setCropBox(normBox(dragRef.current, p, src.width, src.height));
-            }}
-            onPointerUp={() => {
-              dragRef.current = null;
-            }}
-          />
+
+        {raw ? (
+          <pre className="mb-2 whitespace-pre-wrap break-all rounded-lg bg-neutral-50 p-2 font-mono text-xs">{raw}</pre>
         ) : null}
-        {raw ? <pre className="mb-2 whitespace-pre-wrap break-all rounded-lg bg-neutral-50 p-2 font-mono text-xs">{raw}</pre> : null}
         <input
           value={guess}
           onChange={(e) => setGuess(e.target.value.toUpperCase())}
