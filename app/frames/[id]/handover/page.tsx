@@ -15,7 +15,7 @@ export default function HandoverPage({ params }: { params: Promise<{ id: string 
   const h = frame.handover;
 
   return (
-    <Screen title="Frame handover sheet" savedAt={savedAt}>
+    <Screen title="Frame handover sheet" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Shepherd Frame ID">
           <TextInput value={frame.shepherdFrameId} readOnly className="bg-neutral-50" />

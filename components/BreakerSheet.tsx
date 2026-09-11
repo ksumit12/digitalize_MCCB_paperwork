@@ -40,10 +40,14 @@ export function BreakerSheet({
   const [step, setStep] = useState<Step>(() => (mode === "testing" ? "megger" : stepFor(breaker)));
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-paper">
+    <div className="fixed inset-0 z-40 flex flex-col bg-teal-50">
       <header className="flex items-center justify-between px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <button type="button" onClick={onClose} className="text-sm font-medium text-neutral-600">
-          Map
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
+        >
+          ← Board
         </button>
         <p className="text-lg font-bold">{slot}</p>
         <span className="w-8" />
@@ -253,7 +257,7 @@ function DoneStep({
             onClick={onClose}
             className={`w-full rounded-2xl py-4 text-lg ${onNext ? "border border-rule bg-white" : "bg-ink text-white"}`}
           >
-            Map
+            ← Board
           </button>
         </>
       )}

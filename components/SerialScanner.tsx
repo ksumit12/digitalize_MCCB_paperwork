@@ -135,7 +135,7 @@ export function SerialScanner({
               Scan QR
             </button>
           ) : null}
-          {serialKind === "mccb" ? (
+          {serialKind === "mccb" || serialKind === "shunt" ? (
             <button
               type="button"
               onClick={() => {
@@ -144,7 +144,7 @@ export function SerialScanner({
               }}
               className="w-full rounded-2xl bg-ink py-5 text-lg font-medium text-white"
             >
-              Scan sticker
+              {serialKind === "shunt" ? "Scan batch" : "Scan sticker"}
             </button>
           ) : null}
           <input
@@ -185,7 +185,7 @@ export function SerialScanner({
               QR
             </button>
           ) : null}
-          {serialKind === "mccb" ? (
+          {serialKind === "mccb" || serialKind === "shunt" ? (
             <button
               type="button"
               onClick={() => {
@@ -199,8 +199,9 @@ export function SerialScanner({
           ) : null}
         </div>
       )}
-      {photoOpen && serialKind === "mccb" ? (
+      {photoOpen && (serialKind === "mccb" || serialKind === "shunt") ? (
         <MccbPhotoSheet
+          kind={serialKind}
           onClose={() => setPhotoOpen(false)}
           onSerial={(serial) => {
             setPhotoOpen(false);

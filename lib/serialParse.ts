@@ -26,6 +26,19 @@ function uniq(values: string[]): string[] {
 
 export type SerialKind = "mccb" | "ml" | "shunt";
 
+/** TC-2026-W26-6 (week 2 digits, last mark is often a single digit). */
+export function tidyShunt(value: string): string | null {
+  const s = String(value || "")
+    .toUpperCase()
+    .replace(/O/g, "0");
+  const dashed = s.match(/TC-?\s*(\d{4})\s*-?\s*W\s*(\d{1,2})\s*-?\s*([0-9])/);
+  if (dashed) return `TC-${dashed[1]}-W${dashed[2].padStart(2, "0")}-${dashed[3]}`;
+  const compact = s.replace(/[^A-Z0-9]+/g, "");
+  const m = compact.match(/TC(\d{4})W(\d{2})(\d)/);
+  if (m) return `TC-${m[1]}-W${m[2]}-${m[3]}`;
+  return null;
+}
+
 export function looksLikeCatalog(value: string): boolean {
   const s = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   return /^C\d{2}[A-Z]/.test(s) || /^NSX/.test(s) || /^LV/.test(s) || /D100E/.test(s);
@@ -93,10 +106,13 @@ export function serialCandidates(raw: string, kind: SerialKind): string[] {
   }
 
   if (kind === "shunt") {
-    const hits = [...spaced.matchAll(SHUNT_RE), ...compact.matchAll(/TC-?\d{4}(?:-W\d{1,2}-\d(?:-[A-Z0-9]+)?)?/g)].map(
-      (m) => m[0].toUpperCase(),
-    );
-    return uniq(hits);
+    const fromRaw = tidyShunt(spaced);
+    const fromCompact = tidyShunt(compact);
+    const hits = [
+      ...spaced.matchAll(SHUNT_RE),
+      ...compact.matchAll(/TC-?\d{4}(?:-W\d{1,2}-\d(?:-[A-Z0-9]+)?)?/g),
+    ].map((m) => tidyShunt(m[0]) ?? m[0].toUpperCase());
+    return uniq([...(fromRaw ? [fromRaw] : []), ...(fromCompact ? [fromCompact] : []), ...hits]);
   }
 
   const found: string[] = [];

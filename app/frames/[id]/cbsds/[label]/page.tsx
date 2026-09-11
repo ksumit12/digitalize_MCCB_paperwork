@@ -36,7 +36,7 @@ export default function CbsdsPage({
   }
 
   return (
-    <Screen title={`Install CBSDS ${cbsdsLabel} per Shop Drawing`} savedAt={savedAt}>
+    <Screen title={`Install CBSDS ${cbsdsLabel} per Shop Drawing`} savedAt={savedAt} backHref={`/frames/${id}/map`} backLabel="Board">
       <div className="flex gap-2">
         {LABELS.map((l) => (
           <button

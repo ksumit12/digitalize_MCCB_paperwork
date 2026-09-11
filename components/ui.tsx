@@ -1,6 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
+
+const BACK = {
+  home: "bg-zinc-800 text-white",
+  board: "bg-teal-700 text-white",
+  office: "bg-indigo-800 text-white",
+} as const;
+
+function backTone(href: string): keyof typeof BACK {
+  if (href === "/") return "home";
+  if (href.includes("/more")) return "office";
+  return "board";
+}
 
 export function Field({
   label,
@@ -137,14 +150,26 @@ export function YesNaRow({
 export function Screen({
   title,
   savedAt,
+  backHref,
+  backLabel = "Back",
   children,
 }: {
   title: string;
   savedAt?: string | null;
+  backHref?: string;
+  backLabel?: string;
   children: ReactNode;
 }) {
   return (
     <main className="mx-auto max-w-3xl space-y-4 px-4 py-5 pb-24">
+      {backHref ? (
+        <Link
+          href={backHref}
+          className={`inline-flex rounded-xl px-3 py-2 text-sm font-semibold ${BACK[backTone(backHref)]}`}
+        >
+          ← {backLabel}
+        </Link>
+      ) : null}
       <div className="flex items-baseline justify-between gap-3">
         <h1 className="text-xl font-semibold">{title}</h1>
         {savedAt ? <p className="text-xs text-neutral-500">Saved {savedAt}</p> : null}

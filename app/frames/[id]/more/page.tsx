@@ -17,6 +17,12 @@ export default function MorePage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <main className="mx-auto max-w-lg space-y-4 px-4 py-5 pb-28">
+      <Link
+        href={`/frames/${id}/map`}
+        className="inline-flex rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
+      >
+        ← Board
+      </Link>
       <h1 className="text-2xl font-semibold">Office</h1>
 
       <Field label="Shepherd Frame ID">

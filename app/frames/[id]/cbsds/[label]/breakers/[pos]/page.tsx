@@ -44,10 +44,7 @@ export default function BreakerPage({
   const showShunt = needsShuntTrip(breaker.micrologicSettingAmps);
 
   return (
-    <Screen title={`${cbsdsLabel}${position} — serials & torque`} savedAt={savedAt}>
-      <Link href={`/frames/${id}/cbsds/${cbsdsLabel}`} className="text-sm text-neutral-600">
-        ← CBSDS {cbsdsLabel}
-      </Link>
+    <Screen title={`${cbsdsLabel}${position} — serials & torque`} savedAt={savedAt} backHref={`/frames/${id}/cbsds/${cbsdsLabel}`} backLabel={`CBSDS ${cbsdsLabel}`}>
       <Field label="MCCB serial">
         <SerialScanner
           type="ocr"

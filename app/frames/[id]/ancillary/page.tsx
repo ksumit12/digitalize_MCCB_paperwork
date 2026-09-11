@@ -69,7 +69,7 @@ export default function AncillaryPage({ params }: { params: Promise<{ id: string
   const hideEm = frame.market === "AUS";
 
   return (
-    <Screen title="Lights & wiring" savedAt={savedAt}>
+    <Screen title="Lights & wiring" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
       <ItemRow
         label="Install combined lighting/power circuit"
         item={a.combinedLightingPowerCircuit}

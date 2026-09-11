@@ -34,7 +34,7 @@ export default function InstallPage({ params }: { params: Promise<{ id: string }
   const initials = frame.installerInitials || "";
 
   return (
-    <Screen title="Frame install" savedAt={savedAt}>
+    <Screen title="Frame install" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
       <p className="rounded-2xl bg-white px-4 py-3 text-sm">
         String {frame.stringKey || "1"} · {frame.frameSlot || frame.stringId || "—"}
       </p>

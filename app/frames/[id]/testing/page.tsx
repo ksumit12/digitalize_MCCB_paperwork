@@ -38,7 +38,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
   }
 
   return (
-    <Screen title="Electrical testing" savedAt={savedAt}>
+    <Screen title="Electrical testing" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
       <section className="space-y-2 rounded-xl border border-rule bg-white p-3">
         <h2 className="font-medium">Visual inspection P/F</h2>
         <div className="grid grid-cols-4 gap-2">
