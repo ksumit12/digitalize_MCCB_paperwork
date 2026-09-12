@@ -46,6 +46,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
         <p className="text-xs opacity-80">
           {frame.installerName ? `${frame.installerName} · ` : ""}
           {serialsDoneCount(frame)} / {usedCount(frame) || 0} serials
+          {frame.paperImport ? " · paper import" : ""}
           {savedAt ? ` · saved ${savedAt}` : ""}
         </p>
       </div>
@@ -101,6 +102,8 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
           breaker={breaker}
           test={test}
           mode={phase}
+          stringKey={frame.stringKey}
+          frameSlot={frame.frameSlot}
           onBreaker={(b) => update((f) => patchBreaker(f, slot.label, slot.position, b))}
           onTest={(t) =>
             update((f) => ({
@@ -137,6 +140,12 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
               cbsds: f.cbsds.map((c) =>
                 c.label === board ? { ...c, cbsdsSerialNumber: value } : c,
               ),
+            }))
+          }
+          onCbsds={(patch) =>
+            update((f) => ({
+              ...f,
+              cbsds: f.cbsds.map((c) => (c.label === board ? { ...c, ...patch } : c)),
             }))
           }
           onClose={() => setBoard(null)}

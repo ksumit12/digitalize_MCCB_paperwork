@@ -1,6 +1,19 @@
 # MCCB Frame QA
 
-Local prototype for digitising switchboard frame install, serial capture, electrical testing, and handover. All data stays in this browser (IndexedDB). No login.
+Local prototype for digitising switchboard frame install, serial capture, electrical testing, and handover. The app works offline in the browser (IndexedDB) and also stores everything in a local SQLite file on the machine that runs it.
+
+## Data
+
+Every save is pushed to `POST /api/sync` and stored in `data/mccb.db` (SQLite, created automatically). The home screen pulls `GET /api/sync` on load and merges, so:
+
+- results survive clearing the browser / changing devices, and
+- any phone on the same network can pick up the same strings and frames.
+
+Inspect the database directly with:
+
+```bash
+sqlite3 data/mccb.db "select * from frames;"
+```
 
 ## Run
 

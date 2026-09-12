@@ -329,7 +329,13 @@ function drawHeader(
   row(y - 66, "Shepherd Frame ID:", safe(frame.shepherdFrameId), LEFT, col1);
   row(y - 66, "ACTSW Frame ID:", safe(frame.actswFrameId), LEFT + col1, col2);
 
-  row(y - 87, "Installer:", `${safe(frame.installerName)} ${safe(frame.installerInitials)}`.trim(), LEFT, col1);
+  row(
+    y - 87,
+    "Installer:",
+    `${safe(frame.installerName)} ${safe(frame.installerInitials)}${frame.tradeName?.trim() ? ` · ${safe(frame.tradeName)}` : ""}`.trim(),
+    LEFT,
+    col1,
+  );
   row(y - 87, "Market:", safe(frame.market), LEFT + col1, col2);
 
   drawText(

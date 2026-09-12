@@ -15,10 +15,12 @@ import type { Frame } from "@/lib/types";
 
 export function StringBoard({
   stringKey,
+  tradeName,
   frames,
   onDelete,
 }: {
   stringKey: string;
+  tradeName?: string;
   frames: Frame[];
   onDelete?: (key: string) => void;
 }) {
@@ -61,7 +63,12 @@ export function StringBoard({
         onPointerCancel={clearHold}
       >
         <div className="mb-1.5 flex items-baseline justify-between gap-3">
-          <h2 className="text-lg font-semibold">{stringKey}</h2>
+          <h2 className="text-lg font-semibold">
+            {stringKey}
+            {tradeName ? (
+              <span className="text-sm font-normal text-neutral-500"> · {tradeName}</span>
+            ) : null}
+          </h2>
           <p className="text-[11px] tabular-nums text-neutral-400">{percent}%</p>
         </div>
         <div className="flex h-1 overflow-hidden rounded-full bg-zinc-100">

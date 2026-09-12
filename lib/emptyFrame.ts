@@ -81,6 +81,8 @@ export function createEmptyFrame(opts?: {
   stringId?: string;
   stringKey?: string;
   frameSlot?: string;
+  tradeId?: string;
+  tradeName?: string;
   installerInitials?: string;
   installerName?: string;
   testerInitials?: string;
@@ -99,6 +101,9 @@ export function createEmptyFrame(opts?: {
     stringId: opts?.frameSlot ?? opts?.stringId ?? "",
     stringKey: opts?.stringKey ?? "1",
     frameSlot: opts?.frameSlot ?? opts?.stringId ?? "",
+    tradeId: opts?.tradeId ?? "",
+    tradeName: opts?.tradeName ?? "",
+    paperImport: false,
     submitted: false,
     installerInitials: opts?.installerInitials ?? "",
     installerName: opts?.installerName?.trim() || sign,

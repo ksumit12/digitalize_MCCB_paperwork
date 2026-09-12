@@ -68,6 +68,12 @@ export default function MorePage({ params }: { params: Promise<{ id: string }> }
       >
         Handover
       </Link>
+      <Link
+        href="/paper-entry"
+        className="block rounded-2xl bg-white p-5 text-lg font-semibold"
+      >
+        Enter old paperwork
+      </Link>
 
       <div className="rounded-2xl bg-white p-4">
         <PdfButtons frame={frame} />

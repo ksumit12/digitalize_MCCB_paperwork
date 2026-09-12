@@ -142,6 +142,9 @@ export type Frame = {
   stringId?: string;
   stringKey?: string;
   frameSlot?: string;
+  tradeId?: string;
+  tradeName?: string;
+  paperImport?: boolean;
   submitted?: boolean;
   installerInitials?: string;
   installerName?: string;
@@ -167,3 +170,27 @@ export type Frame = {
 };
 
 export type FrameStatus = "in_progress" | "testing" | "handed_over";
+
+export type Trade = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
+
+export type DefectStatus = "open" | "in progress" | "resolved";
+
+export type Defect = {
+  id: string;
+  stringKey: string;
+  frameSlot?: string;
+  slot?: string; // breaker slot e.g. "A3"
+  part: string; // what broke, e.g. "MCCB"
+  serial?: string; // serial of the broken part, if known
+  description: string;
+  raisedBy: string; // initials
+  raisedAt: string;
+  status: DefectStatus;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  updatedAt: string;
+};

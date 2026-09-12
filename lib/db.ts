@@ -1,16 +1,21 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Frame, Installer } from "./types";
+import { pushSync } from "./serverSync";
+import type { Defect, Frame, Installer, Trade } from "./types";
 
 export type StringRun = {
   key: string;
   createdAt: string;
   archivedAt?: string;
+  tradeId?: string;
+  tradeName?: string;
 };
 
 class FrameDb extends Dexie {
   frames!: EntityTable<Frame, "id">;
   installers!: EntityTable<Installer, "initials">;
   stringRuns!: EntityTable<StringRun, "key">;
+  trades!: EntityTable<Trade, "id">;
+  defects!: EntityTable<Defect, "id">;
 
   constructor() {
     super("mccb-frame-qa");
@@ -54,6 +59,18 @@ class FrameDb extends Dexie {
       installers: "initials",
       stringRuns: "key, createdAt, archivedAt",
     });
+    this.version(7).stores({
+      frames: "id, updatedAt, shepherdFrameId, actswFrameId, stringId, manufacturer, phase, stringKey",
+      installers: "initials",
+      stringRuns: "key, createdAt, archivedAt, tradeId",
+      trades: "id",
+      defects: "id, stringKey, status, raisedAt, updatedAt",
+    }).upgrade((tx) => {
+      tx.table("frames").toCollection().modify((frame) => {
+        if (frame.tradeName == null) frame.tradeName = "";
+        if (frame.tradeId == null) frame.tradeId = "";
+      });
+    });
   }
 }
 
@@ -67,6 +84,9 @@ export function withFrameDefaults(frame: Frame): Frame {
     stringId: frame.stringId || frame.frameSlot || "",
     testerInitials: frame.testerInitials ?? "",
     testerName: frame.testerName ?? "",
+    tradeId: frame.tradeId ?? "",
+    tradeName: frame.tradeName ?? "",
+    paperImport: frame.paperImport ?? false,
     moduleFrameSerialNumber:
       frame.moduleFrameSerialNumber?.trim() ||
       [frame.stringKey?.trim() || "1", frame.frameSlot || frame.stringId || ""]
@@ -92,11 +112,14 @@ export async function getFrame(id: string): Promise<Frame | undefined> {
 }
 
 export async function saveFrame(frame: Frame): Promise<void> {
-  await db.frames.put({ ...frame, updatedAt: new Date().toISOString() });
+  const next = { ...frame, updatedAt: new Date().toISOString() };
+  await db.frames.put(next);
+  void pushSync({ op: "frame", frame: next });
 }
 
 export async function deleteFrame(id: string): Promise<void> {
   await db.frames.delete(id);
+  void pushSync({ op: "deleteFrame", id });
 }
 
 export function normalizeInitials(raw: string): string {
@@ -112,7 +135,9 @@ export async function lookupInstaller(initials: string): Promise<Installer | und
 export async function saveInstaller(installer: Installer): Promise<void> {
   const initials = normalizeInitials(installer.initials);
   if (!initials) return;
-  await db.installers.put({ initials, name: installer.name.trim() });
+  const record = { initials, name: installer.name.trim() };
+  await db.installers.put(record);
+  void pushSync({ op: "installer", installer: record });
 }
 
 export async function listInstallers(): Promise<Installer[]> {
@@ -135,27 +160,38 @@ export async function listStringRuns(): Promise<StringRun[]> {
 
 export async function archiveStringRun(key: string): Promise<void> {
   const existing = await db.stringRuns.get(key);
-  await db.stringRuns.put({
+  const run: StringRun = {
     key,
     createdAt: existing?.createdAt || new Date().toISOString(),
     archivedAt: existing?.archivedAt || new Date().toISOString(),
-  });
+  };
+  await db.stringRuns.put(run);
+  void pushSync({ op: "stringRun", run });
 }
 
 export async function unarchiveStringRun(key: string): Promise<void> {
   const existing = await db.stringRuns.get(key);
   if (!existing) return;
-  await db.stringRuns.put({ key: existing.key, createdAt: existing.createdAt });
+  const run: StringRun = { key: existing.key, createdAt: existing.createdAt };
+  await db.stringRuns.put(run);
+  void pushSync({ op: "stringRun", run });
 }
 
 export async function addStringRun(key: string): Promise<void> {
   const trimmed = key.trim();
   if (!trimmed) return;
-  await db.stringRuns.put({
+  const run: StringRun = {
     key: trimmed,
     createdAt: new Date().toISOString(),
     archivedAt: undefined,
-  });
+  };
+  await db.stringRuns.put(run);
+  void pushSync({ op: "stringRun", run });
+}
+
+export async function saveStringRun(run: StringRun): Promise<void> {
+  await db.stringRuns.put(run);
+  void pushSync({ op: "stringRun", run });
 }
 
 export async function deleteStringAndFrames(key: string): Promise<void> {
@@ -169,6 +205,7 @@ export async function deleteStringAndFrames(key: string): Promise<void> {
     if (ids.length) await db.frames.bulkDelete(ids);
     await db.stringRuns.delete(trimmed);
   });
+  void pushSync({ op: "deleteStringRun", key: trimmed });
 }
 
 export async function findFrameBySlot(stringKey: string, frameSlot: string): Promise<Frame | undefined> {
@@ -176,4 +213,35 @@ export async function findFrameBySlot(stringKey: string, frameSlot: string): Pro
   return rows.find(
     (f) => (f.stringKey || "1") === stringKey && (f.frameSlot || f.stringId) === frameSlot,
   );
+}
+
+export function newId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export async function listTrades(): Promise<Trade[]> {
+  return (await db.trades.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function saveTrade(trade: Trade): Promise<void> {
+  await db.trades.put(trade);
+  void pushSync({ op: "trade", trade });
+}
+
+export async function findTradeByName(name: string): Promise<Trade | undefined> {
+  const rows = await db.trades.toArray();
+  return rows.find((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase());
+}
+
+export async function listDefects(): Promise<Defect[]> {
+  return (await db.defects.orderBy("updatedAt").reverse().toArray());
+}
+
+export async function saveDefect(defect: Defect): Promise<void> {
+  const next = { ...defect, updatedAt: new Date().toISOString() };
+  await db.defects.put(next);
+  void pushSync({ op: "defect", defect: next });
 }

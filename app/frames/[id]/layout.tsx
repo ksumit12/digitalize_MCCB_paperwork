@@ -30,7 +30,7 @@ export default function FrameLayout({
   }, [pathname]);
 
   return (
-    <div className={`min-h-screen pb-20 ${wash}`}>
+    <div className={`min-h-screen pb-20 md:pb-0 md:pt-16 ${wash}`}>
       <FrameNav frameId={id} />
       {children}
     </div>

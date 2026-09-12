@@ -30,7 +30,7 @@ export function FrameNav({ frameId }: { frameId: string }) {
     pathname.includes("/testing");
 
   return (
-    <nav className="no-print fixed bottom-0 left-0 right-0 z-30 border-t border-rule bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+    <nav className="no-print fixed bottom-0 left-0 right-0 z-30 border-t border-rule bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:bottom-auto md:top-0 md:border-b md:border-t-0 md:pb-0 md:bg-white">
       <div className="mx-auto grid max-w-lg grid-cols-3 px-1">
         <Link href="/" className={`mx-1 my-2 rounded-xl py-3 text-center text-sm font-semibold ${TABS.home.off}`}>
           Home

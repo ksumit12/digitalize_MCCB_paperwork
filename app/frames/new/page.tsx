@@ -6,6 +6,7 @@ import { lastInstaller, lastTester, rememberLastInstaller, rememberLastTester } 
 import { PeopleChips } from "@/components/SignPick";
 import {
   findFrameBySlot,
+  listStringRuns,
   lookupInstaller,
   normalizeInitials,
   saveFrame,
@@ -23,6 +24,7 @@ function NewFrameForm() {
   const [stringId, setStringId] = useState(presetSlot || "");
   const [initials, setInitials] = useState("");
   const [testerInitials, setTesterInitials] = useState("");
+  const [tradeName, setTradeName] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -32,7 +34,11 @@ function NewFrameForm() {
     if (tester?.initials && tester.initials !== last?.initials) {
       setTesterInitials(tester.initials);
     }
-  }, []);
+    void listStringRuns().then((runs) => {
+      const run = runs.find((r) => r.key === presetKey);
+      if (run?.tradeName) setTradeName(run.tradeName);
+    });
+  }, [presetKey]);
 
   const slot = parseFrameSlot(stringId) || stringId;
 
@@ -40,6 +46,7 @@ function NewFrameForm() {
     <main className="mx-auto max-w-lg space-y-5 px-4 py-6">
       <h1 className="text-2xl font-semibold">
         {presetKey && presetSlot ? `${presetKey} · ${presetSlot}` : "Which frame?"}
+        {tradeName ? <span className="text-base font-normal text-neutral-500"> · {tradeName}</span> : null}
       </h1>
       {!presetSlot ? (
         <>
@@ -135,6 +142,8 @@ function NewFrameForm() {
             stringKey: stringKey.trim(),
             frameSlot: slot,
             stringId: slot,
+            tradeId: "",
+            tradeName,
             installerInitials: installer.initials,
             installerName: installer.name,
             testerInitials: testerKey,

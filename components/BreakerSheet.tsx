@@ -5,10 +5,41 @@ import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
 import { SignPick } from "@/components/SignPick";
 import { emptySlot, serialsComplete, setAmp } from "@/lib/breaker";
+import { lastInstaller } from "@/lib/crew";
+import { newId, saveDefect } from "@/lib/db";
 import { needsShuntTrip } from "@/lib/emptyFrame";
 import type { BreakerPosition, BreakerTest } from "@/lib/types";
 
 type Step = "amp" | "mccb" | "ml" | "shunt" | "done" | "megger";
+
+const BREAKER_TASKS: {
+  key: keyof Pick<
+    BreakerPosition,
+    | "mccbInstalled"
+    | "flexibarCapsRemoved"
+    | "whipTerminated"
+    | "torqueLineSideConfirmed"
+    | "torqueLoadSideConfirmed"
+    | "micrologicSettingConfirmed"
+  >;
+  label: string;
+}[] = [
+  { key: "mccbInstalled", label: "Install MCCB per Shop Drawing" },
+  { key: "flexibarCapsRemoved", label: "Remove flexibar protection caps" },
+  { key: "whipTerminated", label: "Terminate whip leads" },
+  { key: "torqueLineSideConfirmed", label: "Torque line side 10 Nm" },
+  { key: "torqueLoadSideConfirmed", label: "Torque load side 10 Nm" },
+  { key: "micrologicSettingConfirmed", label: "Micrologic set to required setting" },
+];
+
+const ALL_TASKS_DONE: Partial<BreakerPosition> = {
+  mccbInstalled: true,
+  flexibarCapsRemoved: true,
+  whipTerminated: true,
+  torqueLineSideConfirmed: true,
+  torqueLoadSideConfirmed: true,
+  micrologicSettingConfirmed: true,
+};
 
 function stepFor(b: BreakerPosition): Step {
   if (!b.micrologicSettingAmps) return "amp";
@@ -23,6 +54,8 @@ export function BreakerSheet({
   breaker,
   test,
   mode,
+  stringKey,
+  frameSlot,
   onBreaker,
   onTest,
   onClose,
@@ -32,6 +65,8 @@ export function BreakerSheet({
   breaker: BreakerPosition;
   test: BreakerTest;
   mode: "installation" | "testing";
+  stringKey?: string;
+  frameSlot?: string;
   onBreaker: (b: BreakerPosition) => void;
   onTest: (t: BreakerTest) => void;
   onClose: () => void;
@@ -124,6 +159,7 @@ export function BreakerSheet({
             onNext={onNext}
             onEditAmp={() => setStep("amp")}
             onEditSerials={() => setStep("mccb")}
+            onTasks={(patch) => onBreaker({ ...breaker, ...patch })}
             onEmpty={() => {
               onBreaker(emptySlot(breaker));
               onClose();
@@ -132,8 +168,15 @@ export function BreakerSheet({
         ) : null}
 
         {mode === "testing" ? (
-          <MeggerStep breaker={breaker} test={test} onTest={onTest} onBack={onClose} />
+          <MeggerStep breaker={breaker} test={test} onTest={onTest} onBack={onClose} onNext={onNext} />
         ) : null}
+
+        <ReportBreakage
+          slot={slot}
+          breaker={breaker}
+          stringKey={stringKey}
+          frameSlot={frameSlot}
+        />
       </div>
     </div>
   );
@@ -213,6 +256,7 @@ function DoneStep({
   onNext,
   onEditAmp,
   onEditSerials,
+  onTasks,
   onEmpty,
 }: {
   breaker: BreakerPosition;
@@ -220,6 +264,7 @@ function DoneStep({
   onNext?: () => void;
   onEditAmp: () => void;
   onEditSerials: () => void;
+  onTasks: (patch: Partial<BreakerPosition>) => void;
   onEmpty: () => void;
 }) {
   const ready = serialsComplete(breaker);
@@ -241,6 +286,36 @@ function DoneStep({
           <li className="text-neutral-400">No shunt trip (32A)</li>
         )}
       </ul>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Install tasks</p>
+          <button
+            type="button"
+            onClick={() => onTasks(ALL_TASKS_DONE)}
+            className="rounded-xl bg-ink px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            All done
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {BREAKER_TASKS.map((t) => {
+            const done = !!breaker[t.key];
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => onTasks({ [t.key]: !done } as Partial<BreakerPosition>)}
+                className={`rounded-xl px-3 py-2.5 text-left text-xs font-medium leading-snug ${
+                  done ? "bg-emerald-600 text-white" : "bg-white ring-1 ring-rule"
+                }`}
+              >
+                {done ? "✓ " : ""}
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {!ready ? (
         <button type="button" onClick={onEditSerials} className="w-full rounded-2xl bg-ink py-4 text-white">
           Finish serials
@@ -268,16 +343,120 @@ function DoneStep({
   );
 }
 
+function ReportBreakage({
+  slot,
+  breaker,
+  stringKey,
+  frameSlot,
+}: {
+  slot: string;
+  breaker: BreakerPosition;
+  stringKey?: string;
+  frameSlot?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [part, setPart] = useState("MCCB");
+  const [description, setDescription] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  if (saved) {
+    return (
+      <div className="pt-6">
+        <p className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white">
+          Fault logged for {slot}
+        </p>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <div className="pt-6">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full rounded-2xl border border-red-300 bg-red-50 py-3 text-sm font-semibold text-red-700"
+        >
+          Report breakage on {slot}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 pt-6">
+      <h2 className="text-xl font-semibold">Report breakage — {slot}</h2>
+      <p className="text-sm text-neutral-600">
+        String {stringKey || "—"} · Frame {frameSlot || "—"} · Serial{" "}
+        {breaker.mccbSerialNumber || "—"}
+      </p>
+      <select
+        value={part}
+        onChange={(e) => setPart(e.target.value)}
+        className="w-full rounded-2xl border border-rule bg-white px-4 py-3"
+      >
+        {["MCCB", "Micrologic trip unit", "Shunt trip", "Whip lead", "Flexibar cap", "Other"].map(
+          (p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ),
+        )}
+      </select>
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="What happened?"
+        className="min-h-20 w-full rounded-2xl border border-rule bg-white px-4 py-3"
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={!description.trim()}
+          onClick={async () => {
+            await saveDefect({
+              id: newId(),
+              stringKey: stringKey || "",
+              frameSlot: frameSlot || undefined,
+              slot,
+              part,
+              serial: breaker.mccbSerialNumber || undefined,
+              description: description.trim(),
+              raisedBy: lastInstaller()?.initials || "—",
+              raisedAt: new Date().toISOString(),
+              status: "open",
+              updatedAt: new Date().toISOString(),
+            });
+            setSaved(true);
+          }}
+          className="flex-1 rounded-2xl bg-red-600 py-3 text-white disabled:opacity-30"
+        >
+          Log fault
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-2xl border border-rule bg-white px-4 py-3 text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MeggerStep({
   breaker,
   test,
   onTest,
   onBack,
+  onNext,
 }: {
   breaker: BreakerPosition;
   test: BreakerTest;
   onTest: (t: BreakerTest) => void;
   onBack: () => void;
+  onNext?: () => void;
 }) {
   return (
     <div className="space-y-4 pt-2">
@@ -304,6 +483,11 @@ function MeggerStep({
           <SignPick value={test.sign} onChange={(v) => onTest({ ...test, sign: v })} placeholder="Sparky sign-off" />
         </div>
       </label>
+      {onNext ? (
+        <button type="button" onClick={onNext} className="w-full rounded-2xl bg-emerald-700 py-4 text-white">
+          Save & next
+        </button>
+      ) : null}
       <button type="button" onClick={onBack} className="w-full rounded-2xl bg-ink py-4 text-white">
         Done
       </button>
