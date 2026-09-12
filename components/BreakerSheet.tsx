@@ -8,9 +8,10 @@ import { emptySlot, serialsComplete, setAmp } from "@/lib/breaker";
 import { lastInstaller } from "@/lib/crew";
 import { newId, saveDefect } from "@/lib/db";
 import { needsShuntTrip } from "@/lib/emptyFrame";
-import type { BreakerPosition, BreakerTest } from "@/lib/types";
+import type { BreakerPosition, BreakerTest, SerialReplacement } from "@/lib/types";
 
-type Step = "amp" | "mccb" | "ml" | "shunt" | "done" | "megger";
+type Step = "amp" | "mccb" | "ml" | "shunt" | "done" | "megger" | "replace";
+type ReplaceKind = "mccb" | "ml" | "shunt";
 
 const BREAKER_TASKS: {
   key: keyof Pick<
@@ -73,6 +74,58 @@ export function BreakerSheet({
   onNext?: () => void;
 }) {
   const [step, setStep] = useState<Step>(() => (mode === "testing" ? "megger" : stepFor(breaker)));
+  const [replaceKind, setReplaceKind] = useState<ReplaceKind | null>(null);
+
+  function oldSerialOf(kind: ReplaceKind): string {
+    if (kind === "mccb") return breaker.mccbSerialNumber;
+    if (kind === "ml") return breaker.microLogicSerialNumber;
+    return breaker.shuntTripBatchNumber;
+  }
+
+  function partName(kind: ReplaceKind): string {
+    if (kind === "mccb") return "MCCB";
+    if (kind === "ml") return "Micrologic trip unit";
+    return "Shunt trip";
+  }
+
+  async function applyReplacement(kind: ReplaceKind, newSerial: string, note: string) {
+    const oldSerial = oldSerialOf(kind).trim();
+    const initials = lastInstaller()?.initials || "—";
+    const now = new Date().toISOString();
+    const entry: SerialReplacement = {
+      kind,
+      oldSerial,
+      newSerial: newSerial.trim().toUpperCase(),
+      note: note.trim() || undefined,
+      replacedBy: initials,
+      replacedAt: now,
+    };
+    onBreaker({
+      ...breaker,
+      serialHistory: [...(breaker.serialHistory ?? []), entry],
+      mccbSerialNumber: kind === "mccb" ? newSerial.trim().toUpperCase() : breaker.mccbSerialNumber,
+      microLogicSerialNumber: kind === "ml" ? newSerial.trim().toUpperCase() : breaker.microLogicSerialNumber,
+      shuntTripBatchNumber: kind === "shunt" ? newSerial.trim().toUpperCase() : breaker.shuntTripBatchNumber,
+    });
+    // The old part is now faulty gear — log it in the same faults register the office uses.
+    await saveDefect({
+      id: newId(),
+      stringKey: stringKey || "",
+      frameSlot: frameSlot || undefined,
+      slot,
+      part: partName(kind),
+      serial: oldSerial || undefined,
+      description: `Replaced on the board — old ${partName(kind)} ${oldSerial || "—"} swapped for ${newSerial.trim().toUpperCase()}${note.trim() ? ` — ${note.trim()}` : ""}`,
+      raisedBy: initials,
+      raisedAt: now,
+      status: "resolved",
+      resolvedBy: initials,
+      resolvedAt: now,
+      updatedAt: now,
+    });
+    setReplaceKind(null);
+    setStep(mode === "testing" ? "megger" : "done");
+  }
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-teal-50">
@@ -89,6 +142,15 @@ export function BreakerSheet({
       </header>
 
       <div className="flex-1 overflow-auto px-4 pb-8">
+        {replaceKind ? (
+          <ReplaceStep
+            kind={replaceKind}
+            oldSerial={oldSerialOf(replaceKind)}
+            onConfirm={(v, note) => void applyReplacement(replaceKind, v, note)}
+            onBack={() => setReplaceKind(null)}
+          />
+        ) : (
+          <>
         {mode === "installation" && step === "amp" ? (
           <AmpStep
             onEmpty={() => {
@@ -160,6 +222,7 @@ export function BreakerSheet({
             onEditAmp={() => setStep("amp")}
             onEditSerials={() => setStep("mccb")}
             onTasks={(patch) => onBreaker({ ...breaker, ...patch })}
+            onReplace={(kind) => setReplaceKind(kind)}
             onEmpty={() => {
               onBreaker(emptySlot(breaker));
               onClose();
@@ -168,7 +231,14 @@ export function BreakerSheet({
         ) : null}
 
         {mode === "testing" ? (
-          <MeggerStep breaker={breaker} test={test} onTest={onTest} onBack={onClose} onNext={onNext} />
+          <MeggerStep
+            breaker={breaker}
+            test={test}
+            onTest={onTest}
+            onBack={onClose}
+            onNext={onNext}
+            onReplace={(kind) => setReplaceKind(kind)}
+          />
         ) : null}
 
         <ReportBreakage
@@ -177,6 +247,8 @@ export function BreakerSheet({
           stringKey={stringKey}
           frameSlot={frameSlot}
         />
+          </>
+        )}
       </div>
     </div>
   );
@@ -257,6 +329,7 @@ function DoneStep({
   onEditAmp,
   onEditSerials,
   onTasks,
+  onReplace,
   onEmpty,
 }: {
   breaker: BreakerPosition;
@@ -265,6 +338,7 @@ function DoneStep({
   onEditAmp: () => void;
   onEditSerials: () => void;
   onTasks: (patch: Partial<BreakerPosition>) => void;
+  onReplace: (kind: ReplaceKind) => void;
   onEmpty: () => void;
 }) {
   const ready = serialsComplete(breaker);
@@ -339,6 +413,29 @@ function DoneStep({
       <button type="button" onClick={onEmpty} className="w-full py-2 text-sm text-zinc-500">
         Mark empty
       </button>
+
+      {(breaker.mccbSerialNumber || breaker.microLogicSerialNumber || breaker.shuntTripBatchNumber) ? (
+        <div className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-medium text-amber-900">Replace a part — old serial is kept for traceability</p>
+          <div className="grid grid-cols-3 gap-2">
+            {breaker.mccbSerialNumber ? (
+              <button type="button" onClick={() => onReplace("mccb")} className="rounded-xl bg-white px-2 py-2 text-xs font-semibold ring-1 ring-amber-300">
+                MCCB
+              </button>
+            ) : null}
+            {breaker.microLogicSerialNumber ? (
+              <button type="button" onClick={() => onReplace("ml")} className="rounded-xl bg-white px-2 py-2 text-xs font-semibold ring-1 ring-amber-300">
+                Micrologic
+              </button>
+            ) : null}
+            {breaker.shuntTripBatchNumber ? (
+              <button type="button" onClick={() => onReplace("shunt")} className="rounded-xl bg-white px-2 py-2 text-xs font-semibold ring-1 ring-amber-300">
+                Shunt
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -445,18 +542,61 @@ function ReportBreakage({
   );
 }
 
+function ReplaceStep({
+  kind,
+  oldSerial,
+  onConfirm,
+  onBack,
+}: {
+  kind: ReplaceKind;
+  oldSerial: string;
+  onConfirm: (newSerial: string, note: string) => void;
+  onBack: () => void;
+}) {
+  const [note, setNote] = useState("");
+  const title = kind === "mccb" ? "MCCB" : kind === "ml" ? "Micrologic" : "Shunt trip";
+  return (
+    <div className="space-y-4 pt-4">
+      <h2 className="text-2xl font-semibold">Replace {title}</h2>
+      <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        Old serial {oldSerial || "—"} will be kept on this slot and logged as a fault, so the swap can be
+        traced later.
+      </p>
+      <SerialScanner
+        type={kind === "ml" ? "qr" : "ocr"}
+        kind={kind}
+        label={`New ${title} serial`}
+        value=""
+        onConfirm={(v) => onConfirm(v, note)}
+        hero
+      />
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Why is it being replaced? (optional)"
+        className="w-full rounded-2xl border border-rule bg-white px-4 py-3"
+      />
+      <button type="button" onClick={onBack} className="w-full py-2 text-sm text-neutral-500">
+        Back
+      </button>
+    </div>
+  );
+}
+
 function MeggerStep({
   breaker,
   test,
   onTest,
   onBack,
   onNext,
+  onReplace,
 }: {
   breaker: BreakerPosition;
   test: BreakerTest;
   onTest: (t: BreakerTest) => void;
   onBack: () => void;
   onNext?: () => void;
+  onReplace: (kind: ReplaceKind) => void;
 }) {
   return (
     <div className="space-y-4 pt-2">
@@ -467,6 +607,26 @@ function MeggerStep({
         </li>
         <li>Micrologic {breaker.microLogicSerialNumber || "—"}</li>
       </ul>
+      {(breaker.mccbSerialNumber || breaker.microLogicSerialNumber || breaker.shuntTripBatchNumber) ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-neutral-500">Replace:</span>
+          {breaker.mccbSerialNumber ? (
+            <button type="button" onClick={() => onReplace("mccb")} className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold ring-1 ring-rule">
+              MCCB
+            </button>
+          ) : null}
+          {breaker.microLogicSerialNumber ? (
+            <button type="button" onClick={() => onReplace("ml")} className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold ring-1 ring-rule">
+              Micrologic
+            </button>
+          ) : null}
+          {breaker.shuntTripBatchNumber ? (
+            <button type="button" onClick={() => onReplace("shunt")} className="rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold ring-1 ring-rule">
+              Shunt
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <p className="text-sm text-neutral-600">This MCCB ON, others off.</p>
       <IrPassFail
         readings={test.irTest}

@@ -77,6 +77,13 @@ class FrameDb extends Dexie {
 export function withFrameDefaults(frame: Frame): Frame {
   return {
     ...frame,
+    cbsds: frame.cbsds.map((c) => ({
+      ...c,
+      breakerPositions: c.breakerPositions.map((b) => ({
+        ...b,
+        serialHistory: b.serialHistory ?? [],
+      })),
+    })),
     manufacturer: frame.manufacturer ?? "",
     phase: frame.phase === "testing" ? "testing" : "installation",
     stringKey: frame.stringKey?.trim() || "1",

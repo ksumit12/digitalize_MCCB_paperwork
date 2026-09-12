@@ -12,6 +12,15 @@ export type ChecklistItem = {
   installerSign: string;
 };
 
+export type SerialReplacement = {
+  kind: "mccb" | "ml" | "shunt";
+  oldSerial: string;
+  newSerial: string;
+  note?: string;
+  replacedBy: string;
+  replacedAt: string;
+};
+
 export type BreakerPosition = {
   position: number;
   inUse?: boolean;
@@ -27,6 +36,7 @@ export type BreakerPosition = {
   torqueLoadSideConfirmed: boolean;
   micrologicSettingAmps: AmpSetting;
   micrologicSettingConfirmed: boolean;
+  serialHistory?: SerialReplacement[];
 };
 
 export type Cbsds = {

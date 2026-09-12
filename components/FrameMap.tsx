@@ -52,6 +52,13 @@ export function FrameMap({
                 const used = isUsed(b);
                 const done = serialsComplete(b);
                 const tested = meggerComplete(frame.electricalTesting.perBreakerTest[label][b.position - 1]);
+                const tasksDone =
+                  b.mccbInstalled &&
+                  b.flexibarCapsRemoved &&
+                  b.whipTerminated &&
+                  b.torqueLineSideConfirmed &&
+                  b.torqueLoadSideConfirmed &&
+                  b.micrologicSettingConfirmed;
                 const amps = b.micrologicSettingAmps;
                 const colors = amps ? AMP_COLORS[amps] : null;
                 return (
@@ -73,6 +80,17 @@ export function FrameMap({
                     {tested ? (
                       <span className="absolute right-0.5 top-0.5 text-[9px] leading-none">✓</span>
                     ) : null}
+                    {used ? (
+                      <span className="absolute bottom-0.5 left-0.5 flex gap-0.5">
+                        <i
+                          title={b.micrologicSettingConfirmed ? "Micrologic set" : "Micrologic not set"}
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            b.micrologicSettingConfirmed ? "bg-emerald-400" : "bg-red-500"
+                          }`}
+                        />
+                        {tasksDone ? <i className="h-1.5 w-1.5 rounded-full bg-amber-400" /> : null}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -92,6 +110,15 @@ export function FrameMap({
         </span>
         <span className="flex items-center gap-1">
           <i className="inline-block h-3 w-3 rounded bg-violet-500" /> 100A
+        </span>
+        <span className="flex items-center gap-1">
+          <i className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" /> Micrologic set
+        </span>
+        <span className="flex items-center gap-1">
+          <i className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" /> Micrologic not set
+        </span>
+        <span className="flex items-center gap-1">
+          <i className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" /> tasks done
         </span>
         <span>✓ megger done (testing)</span>
       </div>

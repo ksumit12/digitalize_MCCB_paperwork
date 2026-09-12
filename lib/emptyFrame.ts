@@ -44,6 +44,7 @@ function emptyBreaker(position: number): BreakerPosition {
     torqueLoadSideConfirmed: false,
     micrologicSettingAmps: "",
     micrologicSettingConfirmed: false,
+    serialHistory: [],
   };
 }
 

@@ -40,6 +40,17 @@ function openDb(): DatabaseSync {
       data TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS serials (
+      serial TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      frame_id TEXT NOT NULL,
+      string_key TEXT,
+      frame_slot TEXT,
+      slot TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (serial, frame_id, slot)
+    );
+    CREATE INDEX IF NOT EXISTS idx_serials_lookup ON serials(serial, active);
   `);
   return db;
 }
@@ -71,10 +82,45 @@ export function upsertServerFrame(frame: Frame): void {
     JSON.stringify(frame),
     updatedAt,
   );
+  reindexSerials(db, frame);
+}
+
+/**
+ * Index serials out of the frame blob so search works with a plain SQL
+ * query. Active = current serial on the slot; replaced = parked in the
+ * slot's serial history (faulty gear stays findable).
+ */
+function reindexSerials(db: DatabaseSync, frame: Frame): void {
+  db.prepare("DELETE FROM serials WHERE frame_id = ?").run(frame.id);
+  const insert = db.prepare(
+    "INSERT OR REPLACE INTO serials (serial, kind, frame_id, string_key, frame_slot, slot, active) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  );
+  const stringKey = frame.stringKey?.trim() || "1";
+  const frameSlot = frame.frameSlot || frame.stringId || "";
+  for (const c of frame.cbsds ?? []) {
+    for (const b of c.breakerPositions ?? []) {
+      const slot = `${c.label}${b.position}`;
+      const current: Array<[string, string]> = [
+        [b.mccbSerialNumber, "mccb"],
+        [b.microLogicSerialNumber, "ml"],
+        [b.shuntTripBatchNumber, "shunt"],
+      ];
+      for (const [serial, kind] of current) {
+        const s = (serial || "").trim().toUpperCase();
+        if (s) insert.run(s, kind, frame.id, stringKey, frameSlot, slot, 1);
+      }
+      for (const r of b.serialHistory ?? []) {
+        const old = (r.oldSerial || "").trim().toUpperCase();
+        if (old) insert.run(old, r.kind, frame.id, stringKey, frameSlot, slot, 0);
+      }
+    }
+  }
 }
 
 export function deleteServerFrame(id: string): void {
-  getServerDb().prepare("DELETE FROM frames WHERE id = ?").run(id);
+  const db = getServerDb();
+  db.prepare("DELETE FROM frames WHERE id = ?").run(id);
+  db.prepare("DELETE FROM serials WHERE frame_id = ?").run(id);
 }
 
 export function listServerInstallers(): Installer[] {
@@ -116,6 +162,7 @@ export function deleteServerStringRun(key: string): void {
     const frame = JSON.parse(row.data) as Frame;
     if ((frame.stringKey?.trim() || "1") === key.trim()) {
       db.prepare("DELETE FROM frames WHERE id = ?").run(row.id);
+      db.prepare("DELETE FROM serials WHERE frame_id = ?").run(row.id);
     }
   }
   db.prepare("DELETE FROM string_runs WHERE key = ?").run(key.trim());
