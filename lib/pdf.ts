@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { IR_ROWS, POLARITY_ROWS, irForPdf } from "./ir";
+import { IR_ROWS, POLARITY_ROWS, emptyIr, irForPdf, irHasValue } from "./ir";
 import { frameStatus, statusLabel } from "./status";
 import type { BreakerPosition, Cbsds, CbsdsLabel, ChecklistItem, Frame } from "./types";
 
@@ -319,6 +319,22 @@ function drawHeader(
 
   drawText(page, "INT", LEFT + col1 + col2 + 7, y - 14, bold, 7);
   drawText(page, "AUS", LEFT + col1 + col2 + 7, y - 35, bold, 7);
+  drawText(
+    page,
+    `INT ${safe(frame.market) === "INT" ? "[X]" : "[ ]"}`,
+    LEFT + col1 + col2 + 45,
+    y - 14,
+    font,
+    6.5,
+  );
+  drawText(
+    page,
+    `AUS ${safe(frame.market) === "AUS" ? "[X]" : "[ ]"}`,
+    LEFT + col1 + col2 + 45,
+    y - 35,
+    font,
+    6.5,
+  );
 
   row(y - 22, "Finish Date:", safe(frame.finishDate), LEFT, col1);
   row(y - 22, "Finish Time:", safe(frame.finishTime), LEFT + col1, col2);
@@ -411,8 +427,8 @@ function drawSerialTable(
 
   drawCell(page, LEFT, y, cbW, h, "CB", bold, 6, "center");
   drawCell(page, LEFT + cbW, y, mccbW, h, "MCCB Basic Frame", bold, 6);
-  drawCell(page, LEFT + cbW + mccbW, y, mlW, h, "MCCB Trip unit (Micrologic)", bold, 6);
-  drawCell(page, LEFT + cbW + mccbW + mlW, y, shuntW, h, "Shunt Release Same / N/A", bold, 5.5);
+  drawCell(page, LEFT + cbW + mccbW, y, mlW, h, "MCCB Trip unit (Micrologic 2.2/6.2E)", bold, 6);
+  drawCell(page, LEFT + cbW + mccbW + mlW, y, shuntW, h, "Shunt Release (MX 24V DC) Same / N/A", bold, 5.5);
   y -= h;
 
   for (let i = 0; i < 8; i++) {
@@ -689,7 +705,59 @@ function drawElectricalHeader(
     FORM_W - 10
   );
 
+  const aus = frame.market === "AUS";
+  const intl = frame.market === "INT";
+  drawText(
+    page,
+    `Applicable Standard:  AUS (AS/NZS 61439) ${aus ? "[X]" : "[ ]"}    INT (IEC 61439) ${intl ? "[X]" : "[ ]"}`,
+    LEFT + 5,
+    y - 57,
+    font,
+    6.5,
+    FORM_W - 10
+  );
+
   return y - 68;
+}
+
+function drawMechanical(
+  page: PDFPage,
+  y: number,
+  frame: Frame,
+  font: PDFFont,
+  bold: PDFFont
+): number {
+  drawText(
+    page,
+    "Check Mechanical Operation of CBs (Opening, Closing and resetting, Tripping with push-to-test button)",
+    LEFT + 3,
+    y,
+    bold,
+    7,
+    FORM_W - 6
+  );
+  y -= 14;
+  for (const label of ["A", "B", "C", "D"] as CbsdsLabel[]) {
+    const vals = frame.electricalTesting.mechanical?.[label] ?? [];
+    drawCell(page, LEFT, y, 90, 14, `CBSDS ${label}`, font, 6.5);
+    const cellW = (FORM_W - 90) / 8;
+    for (let i = 0; i < 8; i++) {
+      const v = vals[i];
+      drawCell(
+        page,
+        LEFT + 90 + i * cellW,
+        y,
+        cellW,
+        14,
+        v === "pass" ? "P" : v === "fail" ? "F" : "",
+        font,
+        6.5,
+        "center"
+      );
+    }
+    y -= 14;
+  }
+  return y - 6;
 }
 
 function drawMatrix(
@@ -758,6 +826,8 @@ function drawIrPage(
 ) {
   let y = drawElectricalHeader(page, frame, font, bold);
 
+  y = drawMechanical(page, y, frame, font, bold);
+
   const headers = (["A", "B", "C", "D"] as CbsdsLabel[])
     .map((l) => `CBSDS ${l}`);
 
@@ -788,6 +858,33 @@ function drawIrPage(
     font,
     7
   );
+
+  y -= 14;
+  const fclPulled = (["A", "B", "C", "D"] as CbsdsLabel[]).some((l) =>
+    irHasValue(frame.electricalTesting.perCbsdsIr[l]?.readings ?? emptyIr()),
+  );
+  drawText(
+    page,
+    `Make Sure DB Chassis FCL fuses pulled out before Insulation Test  ${checkMark(fclPulled)}`,
+    LEFT + 3,
+    y,
+    font,
+    7,
+    FORM_W - 6,
+  );
+  for (const label of ["A", "B", "C", "D"] as CbsdsLabel[]) {
+    y -= 12;
+    const on = irHasValue(frame.electricalTesting.perCbsdsIr[label]?.readings ?? emptyIr());
+    drawText(
+      page,
+      `Check All MCCBs Are On (Closed) — CBSDS ${label}  ${checkMark(on)}`,
+      LEFT + 3,
+      y,
+      font,
+      7,
+      FORM_W - 6,
+    );
+  }
 }
 
 function drawPerBreakerPage(

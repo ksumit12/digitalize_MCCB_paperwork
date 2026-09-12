@@ -37,6 +37,10 @@ export type BreakerPosition = {
   micrologicSettingAmps: AmpSetting;
   micrologicSettingConfirmed: boolean;
   serialHistory?: SerialReplacement[];
+  serialCapturedBy?: string;
+  serialCapturedAt?: string;
+  installedBy?: string;
+  installedAt?: string;
 };
 
 export type Cbsds = {
@@ -110,6 +114,7 @@ export type AncillaryCircuits = {
 
 export type ElectricalTesting = {
   visualInspection: Record<CbsdsLabel, PassFail>;
+  mechanical: Record<CbsdsLabel, PassFail[]>; // per CB 1..8: open/close/reset/push-to-test
   frameIrSign: string;
   perCbsdsIr: Record<CbsdsLabel, FrameIrColumn>;
   perBreakerTest: Record<CbsdsLabel, BreakerTest[]>;
@@ -180,6 +185,18 @@ export type Frame = {
 };
 
 export type FrameStatus = "in_progress" | "testing" | "handed_over";
+
+export type StockPart = "mccb32" | "mccb63" | "mccb100" | "ml" | "shunt";
+
+export type StockEntry = {
+  id: string;
+  part: StockPart;
+  perBox: number; // how many units come in one box
+  boxes: number;
+  receivedBy: string;
+  receivedAt: string;
+  note?: string;
+};
 
 export type Trade = {
   id: string;

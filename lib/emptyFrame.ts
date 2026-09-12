@@ -45,6 +45,10 @@ function emptyBreaker(position: number): BreakerPosition {
     micrologicSettingAmps: "",
     micrologicSettingConfirmed: false,
     serialHistory: [],
+    serialCapturedBy: "",
+    serialCapturedAt: "",
+    installedBy: "",
+    installedAt: "",
   };
 }
 
@@ -154,6 +158,12 @@ export function createEmptyFrame(opts?: {
     },
     electricalTesting: {
       visualInspection: { A: "", B: "", C: "", D: "" },
+      mechanical: {
+        A: Array.from({ length: 8 }, () => ""),
+        B: Array.from({ length: 8 }, () => ""),
+        C: Array.from({ length: 8 }, () => ""),
+        D: Array.from({ length: 8 }, () => ""),
+      },
       frameIrSign: testSign,
       perCbsdsIr: {
         A: { readings: emptyIr() },

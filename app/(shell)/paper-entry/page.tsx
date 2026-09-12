@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { PaperScanSheet } from "@/components/PaperScanSheet";
 import { Field, PassFailSelect, TextInput, YesNaRow } from "@/components/ui";
 import { emptySlot, isUsed, patchBreaker, setAmp } from "@/lib/breaker";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/lib/db";
 import { createEmptyFrame, needsShuntTrip } from "@/lib/emptyFrame";
 import { fillIr } from "@/lib/ir";
+import type { PaperScanResult } from "@/lib/paperScan";
 import { frameStatus } from "@/lib/status";
 import type { AmpSetting, AncillaryCircuits, BreakerPosition, CbsdsLabel, Frame } from "@/lib/types";
 
@@ -66,6 +68,30 @@ export default function PaperEntryPage() {
   const [tradeName, setTradeName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [scanBoard, setScanBoard] = useState<CbsdsLabel | null>(null);
+
+  function applyScan(label: CbsdsLabel, res: PaperScanResult) {
+    patch((f) => ({
+      ...f,
+      cbsds: f.cbsds.map((c) => {
+        if (c.label !== label) return c;
+        return {
+          ...c,
+          cbsdsSerialNumber: c.cbsdsSerialNumber || res.switchboardLine || "",
+          breakerPositions: c.breakerPositions.map((b) => {
+            const i = b.position - 1;
+            const next = { ...b };
+            if (res.mccbs[i]) next.mccbSerialNumber = res.mccbs[i];
+            if (res.mls[i]) next.microLogicSerialNumber = res.mls[i];
+            if (res.shunts[i]) next.shuntTripBatchNumber = res.shunts[i];
+            if (res.mccbs[i] || res.mls[i] || res.shunts[i]) next.inUse = true;
+            return next;
+          }),
+        };
+      }),
+    }));
+    setScanBoard(null);
+  }
 
   function patch(fn: (f: Frame) => Frame) {
     setDraft((f) => fn(f));
@@ -350,13 +376,22 @@ export default function PaperEntryPage() {
                     onChange={(e) => patchBoard(label, { cbsdsSerialNumber: e.target.value })}
                   />
                 </Field>
-                <button
-                  type="button"
-                  onClick={() => tickBoardTasks(label)}
-                  className="rounded-2xl bg-ink px-4 py-2 text-sm font-medium text-white"
-                >
-                  Tick all install tasks on this board
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => tickBoardTasks(label)}
+                    className="rounded-2xl bg-ink px-4 py-2 text-sm font-medium text-white"
+                  >
+                    Tick all install tasks on this board
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScanBoard(label)}
+                    className="rounded-2xl border border-ink bg-white px-4 py-2 text-sm font-medium"
+                  >
+                    📷 Scan paper page
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {board.breakerPositions.map((b) => (
                     <div key={b.position} className="rounded-xl border border-rule p-2">
@@ -458,6 +493,24 @@ export default function PaperEntryPage() {
                   className="rounded-xl bg-ink px-3 py-2 text-xs font-semibold text-white disabled:opacity-30"
                 >
                   All {used} breakers IR + polarity pass
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    patch((f) => ({
+                      ...f,
+                      electricalTesting: {
+                        ...f.electricalTesting,
+                        mechanical: {
+                          ...f.electricalTesting.mechanical,
+                          [label]: Array.from({ length: 8 }, () => "pass" as const),
+                        },
+                      },
+                    }))
+                  }
+                  className="rounded-xl border border-ink bg-white px-3 py-2 text-xs font-semibold"
+                >
+                  Mechanical all pass
                 </button>
               </div>
             </div>
@@ -584,6 +637,14 @@ export default function PaperEntryPage() {
       >
         {saving ? "Saving…" : "Save old paperwork into database"}
       </button>
+
+      {scanBoard ? (
+        <PaperScanSheet
+          label={scanBoard}
+          onApply={(res) => applyScan(scanBoard, res)}
+          onClose={() => setScanBoard(null)}
+        />
+      ) : null}
     </main>
   );
 }

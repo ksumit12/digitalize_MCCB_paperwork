@@ -3,6 +3,7 @@
 import { BreakerSheet } from "@/components/BreakerSheet";
 import { BoardMegger } from "@/components/BoardMegger";
 import { FrameMap } from "@/components/FrameMap";
+import { PdfButtons } from "@/components/PdfButtons";
 import { SwitchboardInstall } from "@/components/SwitchboardInstall";
 import {
   getBreaker,
@@ -52,9 +53,12 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
       </div>
 
       {frame.submitted ? (
-        <p className="mb-3 rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          Submitted
-        </p>
+        <div className="mb-3 space-y-2">
+          <p className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900">Submitted</p>
+          <div className="rounded-2xl bg-white p-3">
+            <PdfButtons frame={frame} />
+          </div>
+        </div>
       ) : testing ? (
         <div className="mb-3 space-y-2">
           <button
@@ -156,13 +160,14 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
         <BoardMegger
           label={board}
           frame={frame}
-          onChange={(readings: IrReadings, visual: PassFail, sign: string) =>
+          onChange={(readings: IrReadings, visual: PassFail, sign: string, mechanical: PassFail[]) =>
             update((f) => ({
               ...f,
               electricalTesting: {
                 ...f.electricalTesting,
                 visualInspection: { ...f.electricalTesting.visualInspection, [board]: visual },
                 frameIrSign: sign,
+                mechanical: { ...f.electricalTesting.mechanical, [board]: mechanical },
                 perCbsdsIr: {
                   ...f.electricalTesting.perCbsdsIr,
                   [board]: { readings },

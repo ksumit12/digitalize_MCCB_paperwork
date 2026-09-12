@@ -1,6 +1,6 @@
 import { isUsed, serialsComplete } from "./breaker";
 import type { StringRun } from "./db";
-import type { Frame } from "./types";
+import type { Frame, StockEntry, StockPart } from "./types";
 
 /*
  * Inventory & progress numbers, all derived from the frames already captured.
@@ -143,4 +143,53 @@ export function peopleForSlot(
     installer: frame ? `${frame.installerName || ""} ${frame.installerInitials || ""}`.trim() : "",
     tester: frame ? `${frame.testerName || ""} ${frame.testerInitials || ""}`.trim() : "",
   };
+}
+
+/* --- stock: boxes received vs what the frames have consumed --- */
+
+export const STOCK_PARTS: { key: StockPart; label: string }[] = [
+  { key: "mccb32", label: "MCCB 32A" },
+  { key: "mccb63", label: "MCCB 63A" },
+  { key: "mccb100", label: "MCCB 100A" },
+  { key: "ml", label: "Micrologic trip unit" },
+  { key: "shunt", label: "Shunt trip" },
+];
+
+export type StockLine = {
+  part: StockPart;
+  label: string;
+  received: number;
+  used: number;
+  remaining: number;
+  missing: number;
+};
+
+export function stockSummary(
+  entries: StockEntry[],
+  usage: Omit<StringInventory, "key" | "tradeName" | "framesStarted">,
+): StockLine[] {
+  const received = new Map<StockPart, number>();
+  for (const e of entries) {
+    received.set(e.part, (received.get(e.part) ?? 0) + e.perBox * e.boxes);
+  }
+  const used: Record<StockPart, number> = {
+    mccb32: usage.mccb32,
+    mccb63: usage.mccb63,
+    mccb100: usage.mccb100,
+    ml: usage.micrologics,
+    shunt: usage.shunts,
+  };
+  return STOCK_PARTS.map(({ key, label }) => {
+    const recv = received.get(key) ?? 0;
+    const usedCount = used[key];
+    const remaining = recv - usedCount;
+    return {
+      part: key,
+      label,
+      received: recv,
+      used: usedCount,
+      remaining: Math.max(0, remaining),
+      missing: remaining < 0 ? -remaining : 0,
+    };
+  });
 }

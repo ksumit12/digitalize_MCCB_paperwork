@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import { pushSync } from "./serverSync";
-import type { Defect, Frame, Installer, Trade } from "./types";
+import type { Defect, Frame, Installer, StockEntry, Trade } from "./types";
 
 export type StringRun = {
   key: string;
@@ -16,6 +16,7 @@ class FrameDb extends Dexie {
   stringRuns!: EntityTable<StringRun, "key">;
   trades!: EntityTable<Trade, "id">;
   defects!: EntityTable<Defect, "id">;
+  stock!: EntityTable<StockEntry, "id">;
 
   constructor() {
     super("mccb-frame-qa");
@@ -71,6 +72,14 @@ class FrameDb extends Dexie {
         if (frame.tradeId == null) frame.tradeId = "";
       });
     });
+    this.version(8).stores({
+      frames: "id, updatedAt, shepherdFrameId, actswFrameId, stringId, manufacturer, phase, stringKey",
+      installers: "initials",
+      stringRuns: "key, createdAt, archivedAt, tradeId",
+      trades: "id",
+      defects: "id, stringKey, status, raisedAt, updatedAt",
+      stock: "id, part, receivedAt",
+    });
   }
 }
 
@@ -82,6 +91,10 @@ export function withFrameDefaults(frame: Frame): Frame {
       breakerPositions: c.breakerPositions.map((b) => ({
         ...b,
         serialHistory: b.serialHistory ?? [],
+        serialCapturedBy: b.serialCapturedBy ?? "",
+        serialCapturedAt: b.serialCapturedAt ?? "",
+        installedBy: b.installedBy ?? "",
+        installedAt: b.installedAt ?? "",
       })),
     })),
     manufacturer: frame.manufacturer ?? "",
@@ -91,6 +104,15 @@ export function withFrameDefaults(frame: Frame): Frame {
     stringId: frame.stringId || frame.frameSlot || "",
     testerInitials: frame.testerInitials ?? "",
     testerName: frame.testerName ?? "",
+    electricalTesting: {
+      ...frame.electricalTesting,
+      mechanical: frame.electricalTesting?.mechanical ?? {
+        A: Array.from({ length: 8 }, () => ""),
+        B: Array.from({ length: 8 }, () => ""),
+        C: Array.from({ length: 8 }, () => ""),
+        D: Array.from({ length: 8 }, () => ""),
+      },
+    },
     tradeId: frame.tradeId ?? "",
     tradeName: frame.tradeName ?? "",
     paperImport: frame.paperImport ?? false,
@@ -251,4 +273,13 @@ export async function saveDefect(defect: Defect): Promise<void> {
   const next = { ...defect, updatedAt: new Date().toISOString() };
   await db.defects.put(next);
   void pushSync({ op: "defect", defect: next });
+}
+
+export async function listStockEntries(): Promise<StockEntry[]> {
+  return (await db.stock.orderBy("receivedAt").reverse().toArray());
+}
+
+export async function saveStockEntry(entry: StockEntry): Promise<void> {
+  await db.stock.put(entry);
+  void pushSync({ op: "stock", stock: entry });
 }

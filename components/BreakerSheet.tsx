@@ -172,7 +172,12 @@ export function BreakerSheet({
             kind="mccb"
             value={breaker.mccbSerialNumber}
             onConfirm={(v) => {
-              onBreaker({ ...breaker, mccbSerialNumber: v });
+              onBreaker({
+                ...breaker,
+                mccbSerialNumber: v,
+                serialCapturedBy: lastInstaller()?.initials || breaker.serialCapturedBy || "",
+                serialCapturedAt: new Date().toISOString(),
+              });
               setStep("ml");
             }}
             onBack={() => setStep("amp")}
@@ -221,7 +226,18 @@ export function BreakerSheet({
             onNext={onNext}
             onEditAmp={() => setStep("amp")}
             onEditSerials={() => setStep("mccb")}
-            onTasks={(patch) => onBreaker({ ...breaker, ...patch })}
+            onTasks={(patch) =>
+              onBreaker({
+                ...breaker,
+                ...patch,
+                installedBy: patch.mccbInstalled
+                  ? breaker.installedBy || lastInstaller()?.initials || ""
+                  : breaker.installedBy,
+                installedAt: patch.mccbInstalled
+                  ? breaker.installedAt || new Date().toISOString()
+                  : breaker.installedAt,
+              })
+            }
             onReplace={(kind) => setReplaceKind(kind)}
             onEmpty={() => {
               onBreaker(emptySlot(breaker));
@@ -359,6 +375,15 @@ function DoneStep({
         ) : (
           <li className="text-neutral-400">No shunt trip (32A)</li>
         )}
+        {breaker.serialCapturedBy || breaker.installedBy ? (
+          <li className="text-neutral-500">
+            Scanned by {breaker.serialCapturedBy || "—"}
+            {breaker.serialCapturedAt
+              ? ` ${new Date(breaker.serialCapturedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
+              : ""}
+            {breaker.installedBy ? ` · Fitted by ${breaker.installedBy}` : ""}
+          </li>
+        ) : null}
       </ul>
       <div className="space-y-2">
         <div className="flex items-center justify-between">

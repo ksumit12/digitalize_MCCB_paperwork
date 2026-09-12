@@ -1,4 +1,4 @@
-import type { Defect, Frame, Installer, Trade } from "./types";
+import type { Defect, Frame, Installer, StockEntry, Trade } from "./types";
 import type { StringRun } from "./db";
 
 /*
@@ -15,7 +15,8 @@ export type SyncDelta =
   | { op: "stringRun"; run: StringRun }
   | { op: "deleteStringRun"; key: string }
   | { op: "trade"; trade: Trade }
-  | { op: "defect"; defect: Defect };
+  | { op: "defect"; defect: Defect }
+  | { op: "stock"; stock: StockEntry };
 
 export async function pushSync(delta: SyncDelta): Promise<void> {
   try {
@@ -38,6 +39,7 @@ export async function pullAndMerge(): Promise<void> {
     stringRuns: StringRun[];
     trades: Trade[];
     defects: Defect[];
+    stock: StockEntry[];
   };
   try {
     const res = await fetch("/api/sync", { cache: "no-store" });
@@ -115,5 +117,15 @@ export async function pullAndMerge(): Promise<void> {
   }
   for (const ld of localDefects) {
     if (!serverDefectIds.has(ld.id)) await pushSync({ op: "defect", defect: ld });
+  }
+
+  // Stock entries — union of both sides.
+  const localStock = await db.stock.toArray();
+  const serverStockIds = new Set(data.stock.map((s) => s.id));
+  for (const ss of data.stock) {
+    if (!localStock.some((s) => s.id === ss.id)) await db.stock.put(ss);
+  }
+  for (const ls of localStock) {
+    if (!serverStockIds.has(ls.id)) await pushSync({ op: "stock", stock: ls });
   }
 }

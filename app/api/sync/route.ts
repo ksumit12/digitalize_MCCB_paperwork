@@ -5,11 +5,13 @@ import {
   listServerDefects,
   listServerFrames,
   listServerInstallers,
+  listServerStock,
   listServerStringRuns,
   listServerTrades,
   upsertServerDefect,
   upsertServerFrame,
   upsertServerInstaller,
+  upsertServerStock,
   upsertServerStringRun,
   upsertServerTrade,
 } from "@/lib/serverDb";
@@ -26,6 +28,7 @@ export async function GET() {
     stringRuns: listServerStringRuns(),
     trades: listServerTrades(),
     defects: listServerDefects(),
+    stock: listServerStock(),
   });
 }
 
@@ -59,6 +62,9 @@ export async function POST(req: NextRequest) {
       break;
     case "defect":
       upsertServerDefect(body.defect);
+      break;
+    case "stock":
+      upsertServerStock(body.stock);
       break;
     default:
       return NextResponse.json({ error: "unknown op" }, { status: 400 });

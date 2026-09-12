@@ -11,12 +11,13 @@ export function BoardMegger({
 }: {
   label: CbsdsLabel;
   frame: Frame;
-  onChange: (readings: IrReadings, visual: PassFail, sign: string) => void;
+  onChange: (readings: IrReadings, visual: PassFail, sign: string, mechanical: PassFail[]) => void;
   onClose: () => void;
 }) {
   const readings = frame.electricalTesting.perCbsdsIr[label].readings;
   const visual = frame.electricalTesting.visualInspection[label];
   const sign = frame.electricalTesting.frameIrSign;
+  const mechanical = frame.electricalTesting.mechanical[label] ?? Array.from({ length: 8 }, () => "");
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-teal-50">
@@ -44,7 +45,7 @@ export function BoardMegger({
             <button
               key={v}
               type="button"
-              onClick={() => onChange(readings, v, sign)}
+              onClick={() => onChange(readings, v, sign, mechanical)}
               className={`flex-1 rounded-2xl py-3 ${
                 visual === v ? "bg-ink text-white" : "bg-white"
               }`}
@@ -53,13 +54,40 @@ export function BoardMegger({
             </button>
           ))}
         </div>
+        <div className="mb-4 rounded-2xl bg-white p-3">
+          <p className="mb-2 text-sm font-medium">
+            Mechanical operation of CBs — open, close, reset, push-to-test (tap to cycle)
+          </p>
+          <div className="grid grid-cols-8 gap-1.5">
+            {mechanical.map((v, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  const next = [...mechanical];
+                  next[i] = v === "" ? "pass" : v === "pass" ? "fail" : "";
+                  onChange(readings, visual, sign, next);
+                }}
+                className={`aspect-square rounded-lg text-[10px] font-bold ${
+                  v === "pass"
+                    ? "bg-emerald-600 text-white"
+                    : v === "fail"
+                      ? "bg-red-600 text-white"
+                      : "bg-zinc-100 text-neutral-500"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        </div>
         <IrPassFail
           readings={readings}
-          onChange={(next) => onChange(next, visual, sign)}
+          onChange={(next) => onChange(next, visual, sign, mechanical)}
         />
         <input
           value={sign}
-          onChange={(e) => onChange(readings, visual, e.target.value)}
+          onChange={(e) => onChange(readings, visual, e.target.value, mechanical)}
           placeholder="Sign"
           className="mt-4 w-full rounded-2xl border border-rule bg-white px-4 py-3"
         />
