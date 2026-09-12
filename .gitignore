@@ -8,3 +8,5 @@ lib/pdf.ts.bak
 serials-inbox/*
 !serials-inbox/.gitkeep
 data
+data
+scripts/certs
