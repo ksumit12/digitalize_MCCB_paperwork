@@ -469,17 +469,6 @@ async function pullRemote(): Promise<boolean> {
     }
   }
 
-  const installers = await apiGet<Installer[]>("listInstallers");
-  if (installers) {
-    for (const person of installers) {
-      const local = await db.installers.get(person.initials);
-      if (!local) {
-        await db.installers.put(person);
-        changed = true;
-      }
-    }
-  }
-
   return changed;
 }
 
