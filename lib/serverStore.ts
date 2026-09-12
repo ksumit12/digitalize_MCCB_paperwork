@@ -159,6 +159,15 @@ async function getDriver(): Promise<Driver> {
           "Current project",
           new Date().toISOString(),
         ]);
+      } else {
+        const named = await d.all("SELECT id FROM projects WHERE id != ?", [DEFAULT_PROJECT_ID]);
+        if (named.length) {
+          const leftover = await d.all("SELECT id FROM frames WHERE project_id = ?", [DEFAULT_PROJECT_ID]);
+          if (!leftover.length) {
+            await d.run("DELETE FROM strings WHERE project_id = ?", [DEFAULT_PROJECT_ID]);
+            await d.run("DELETE FROM projects WHERE id = ? AND name = ?", [DEFAULT_PROJECT_ID, "Current project"]);
+          }
+        }
       }
       return d;
     });

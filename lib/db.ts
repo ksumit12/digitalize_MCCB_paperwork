@@ -327,11 +327,38 @@ async function pullRemote(): Promise<boolean> {
 
   const projects = await apiGet<Project[]>("listProjects");
   if (projects?.length) {
+    const remoteIds = new Set(projects.map((p) => p.id));
     for (const p of projects) {
       if (box.deletedProjects.includes(p.id)) continue;
       const local = await db.projects.get(p.id);
-      if (!local) {
+      if (!local || local.name !== p.name) {
         await db.projects.put(p);
+        changed = true;
+      }
+    }
+    const locals = await db.projects.toArray();
+    for (const local of locals) {
+      if (remoteIds.has(local.id)) continue;
+      if (box.projects.some((p) => p.id === local.id)) continue;
+      await db.projects.delete(local.id);
+      changed = true;
+    }
+    const still = await db.projects.toArray();
+    const active = currentProjectId();
+    if (still.length && !still.some((p) => p.id === active)) {
+      setCurrentProjectId(still[0].id);
+      changed = true;
+    } else if (
+      still.length > 1 &&
+      active === DEFAULT_PROJECT_ID &&
+      still.some((p) => p.id !== DEFAULT_PROJECT_ID)
+    ) {
+      const onDefault = (await db.frames.toArray()).some(
+        (f) => (f.projectId || DEFAULT_PROJECT_ID) === DEFAULT_PROJECT_ID,
+      );
+      const next = still.find((p) => p.id !== DEFAULT_PROJECT_ID);
+      if (!onDefault && next) {
+        setCurrentProjectId(next.id);
         changed = true;
       }
     }
