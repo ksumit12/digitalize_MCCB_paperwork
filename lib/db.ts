@@ -315,12 +315,35 @@ async function putLocalFrame(frame: Frame) {
   });
 }
 
+async function wipeProjectLocal(id: string) {
+  const frames = (await db.frames.toArray()).filter((f) => (f.projectId || DEFAULT_PROJECT_ID) === id);
+  const frameIds = frames.map((f) => f.id);
+  const stringRows = await db.strings.where("projectId").equals(id).toArray();
+  await db.transaction("rw", db.frames, db.strings, db.stringRuns, db.breakers, db.faults, async () => {
+    if (frameIds.length) {
+      await db.frames.bulkDelete(frameIds);
+      for (const frameId of frameIds) {
+        await db.breakers.where("frameId").equals(frameId).delete();
+        await db.faults.where("frameId").equals(frameId).delete();
+      }
+    }
+    for (const row of stringRows) {
+      await db.strings.delete(row.id);
+    }
+    await db.faults.where("projectId").equals(id).delete();
+  });
+  return { frameIds, keys: stringRows.map((s) => s.key) };
+}
+
+function projectIdOf(frame: Frame) {
+  return frame.projectId || DEFAULT_PROJECT_ID;
+}
+
 function newer(a?: string, b?: string) {
   return Date.parse(a || "") > Date.parse(b || "");
 }
 
 async function pullRemote(): Promise<boolean> {
-  const pid = currentProjectId();
   const box = readOutbox();
   const dirty = new Set(box.frames);
   let changed = false;
@@ -340,50 +363,61 @@ async function pullRemote(): Promise<boolean> {
     for (const local of locals) {
       if (remoteIds.has(local.id)) continue;
       if (box.projects.some((p) => p.id === local.id)) continue;
+      await wipeProjectLocal(local.id);
       await db.projects.delete(local.id);
       changed = true;
     }
     const still = await db.projects.toArray();
+    const liveIds = new Set(still.map((p) => p.id));
+    const orphanIds = new Set<string>();
+    for (const frame of await db.frames.toArray()) {
+      const id = projectIdOf(frame);
+      if (!liveIds.has(id)) orphanIds.add(id);
+    }
+    for (const row of await db.strings.toArray()) {
+      if (!liveIds.has(row.projectId)) orphanIds.add(row.projectId);
+    }
+    for (const id of orphanIds) {
+      if (box.projects.some((p) => p.id === id)) continue;
+      await wipeProjectLocal(id);
+      changed = true;
+    }
     const active = currentProjectId();
     if (still.length && !still.some((p) => p.id === active)) {
       setCurrentProjectId(still[0].id);
       changed = true;
-    } else if (
-      still.length > 1 &&
-      active === DEFAULT_PROJECT_ID &&
-      still.some((p) => p.id !== DEFAULT_PROJECT_ID)
-    ) {
-      const onDefault = (await db.frames.toArray()).some(
-        (f) => (f.projectId || DEFAULT_PROJECT_ID) === DEFAULT_PROJECT_ID,
-      );
-      const next = still.find((p) => p.id !== DEFAULT_PROJECT_ID);
-      if (!onDefault && next) {
-        setCurrentProjectId(next.id);
-        changed = true;
-      }
     }
   }
 
+  const pid = currentProjectId();
+
   const strings = await apiGet<StringRun[]>("listStrings");
   if (strings) {
+    const remoteKeys = new Set(strings.map((run) => run.key));
     for (const run of strings) {
       if (box.deletedStrings.some((s) => s.projectId === pid && s.key === run.key)) continue;
       const id = `${pid}:${run.key}`;
       const local = await db.strings.get(id);
       if (!local) {
         await db.strings.put({ id, projectId: pid, ...run });
-        await db.stringRuns.put(run);
         changed = true;
       } else if (Boolean(local.archivedAt) !== Boolean(run.archivedAt)) {
         await db.strings.put({ ...local, archivedAt: run.archivedAt });
-        await db.stringRuns.put(run);
         changed = true;
       }
+    }
+    const localStrings = await db.strings.where("projectId").equals(pid).toArray();
+    for (const row of localStrings) {
+      if (remoteKeys.has(row.key)) continue;
+      if (box.strings.some((s) => s.id === row.id)) continue;
+      await db.strings.delete(row.id);
+      changed = true;
     }
   }
 
   const frames = await apiGet<Frame[]>("listFrames");
   if (frames) {
+    const remoteIds = new Set(frames.map((f) => f.id));
     for (const remote of frames) {
       if (dirty.has(remote.id) || box.deletedFrames.includes(remote.id)) continue;
       const local = await db.frames.get(remote.id);
@@ -391,6 +425,17 @@ async function pullRemote(): Promise<boolean> {
         await putLocalFrame(remote);
         changed = true;
       }
+    }
+    const localFrames = await db.frames.toArray();
+    for (const local of localFrames) {
+      if (projectIdOf(local) !== pid) continue;
+      if (remoteIds.has(local.id) || dirty.has(local.id)) continue;
+      await db.transaction("rw", db.frames, db.breakers, db.faults, async () => {
+        await db.frames.delete(local.id);
+        await db.breakers.where("frameId").equals(local.id).delete();
+        await db.faults.where("frameId").equals(local.id).delete();
+      });
+      changed = true;
     }
   }
 
@@ -551,10 +596,7 @@ export async function listStringRuns(): Promise<StringRun[]> {
   startBackgroundSync();
   const pid = currentProjectId();
   const rows = await db.strings.where("projectId").equals(pid).toArray();
-  if (rows.length) {
-    return rows.map((r) => ({ key: r.key, createdAt: r.createdAt, archivedAt: r.archivedAt }));
-  }
-  return db.stringRuns.toArray();
+  return rows.map((r) => ({ key: r.key, createdAt: r.createdAt, archivedAt: r.archivedAt }));
 }
 
 export async function archiveStringRun(key: string): Promise<void> {
@@ -657,6 +699,7 @@ export async function addProject(name: string): Promise<Project> {
     createdAt: new Date().toISOString(),
   };
   await db.projects.put(project);
+  setCurrentProjectId(project.id);
   queueProject(project);
   return project;
 }
@@ -666,21 +709,8 @@ export async function deleteProject(id: string): Promise<{ ok: true } | { ok: fa
   const remaining = projects.filter((p) => p.id !== id);
   if (remaining.length === 0) return { ok: false, reason: "last" };
 
-  const frames = (await db.frames.toArray()).filter((f) => (f.projectId || DEFAULT_PROJECT_ID) === id);
-  const frameIds = frames.map((f) => f.id);
-
-  await db.transaction("rw", db.projects, db.frames, db.strings, db.breakers, db.faults, async () => {
-    if (frameIds.length) {
-      await db.frames.bulkDelete(frameIds);
-      for (const frameId of frameIds) {
-        await db.breakers.where("frameId").equals(frameId).delete();
-        await db.faults.where("frameId").equals(frameId).delete();
-      }
-    }
-    await db.strings.where("projectId").equals(id).delete();
-    await db.faults.where("projectId").equals(id).delete();
-    await db.projects.delete(id);
-  });
+  const { frameIds } = await wipeProjectLocal(id);
+  await db.projects.delete(id);
 
   if (currentProjectId() === id) {
     setCurrentProjectId(remaining[0].id);
