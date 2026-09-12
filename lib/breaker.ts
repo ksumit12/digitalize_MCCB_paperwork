@@ -74,6 +74,7 @@ export function emptySlot(b: BreakerPosition): BreakerPosition {
     micrologicSettingConfirmed: false,
     mccbScannedBy: "",
     mccbScannedAt: "",
+    micrologicModel: "2.2",
   };
 }
 

@@ -11,6 +11,7 @@ import {
   saveFrame,
   saveInstaller,
 } from "@/lib/db";
+import { currentProjectId } from "@/lib/project";
 import { createEmptyFrame } from "@/lib/emptyFrame";
 import { STRING_LEVELS, parseFrameSlot } from "@/lib/stringLayout";
 
@@ -132,6 +133,7 @@ function NewFrameForm() {
             rememberLastTester(tester);
           }
           const frame = createEmptyFrame({
+            projectId: currentProjectId(),
             stringKey: stringKey.trim(),
             frameSlot: slot,
             stringId: slot,

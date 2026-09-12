@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { StringBoard } from "@/components/StringBoard";
+import { HomeMenu } from "@/components/HomeMenu";
 import {
   addStringRun,
   archiveStringRun,
   deleteStringAndFrames,
-  getFrame,
   listFrames,
+  listProjects,
   listStringRuns,
-  saveFrame,
   unarchiveStringRun,
   type StringRun,
 } from "@/lib/db";
+import { currentProjectId } from "@/lib/project";
 import { FRAME_SLOTS, slotFromFrame, stringKeyFromFrame } from "@/lib/stringLayout";
 import type { Frame } from "@/lib/types";
 
@@ -35,6 +36,13 @@ function lastTouched(frames: Frame[]): number {
   }, 0);
 }
 
+function greeting(now = new Date()): string {
+  const h = now.getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function HomePage() {
   const [frames, setFrames] = useState<Frame[]>([]);
   const [runs, setRuns] = useState<StringRun[]>([]);
@@ -44,9 +52,13 @@ export default function HomePage() {
   const [showDone, setShowDone] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [hello, setHello] = useState("");
 
   async function refresh() {
-    const [list, stringRuns] = await Promise.all([listFrames(), listStringRuns()]);
+    const [list, stringRuns, projects] = await Promise.all([listFrames(), listStringRuns(), listProjects()]);
+    const pid = currentProjectId();
+    setProjectName(projects.find((p) => p.id === pid)?.name || "Current project");
     const keys = new Set([...stringRuns.map((r) => r.key), ...list.map((f) => stringKeyFromFrame(f))]);
     for (const key of keys) {
       const group = list.filter((f) => stringKeyFromFrame(f) === key);
@@ -63,6 +75,7 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    setHello(greeting());
     void refresh();
   }, []);
 
@@ -93,33 +106,22 @@ export default function HomePage() {
   const pending = grouped.find((g) => g.key === pendingDelete);
 
   return (
-    <main className="mx-auto max-w-lg px-4 py-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Strings</h1>
+    <main className="mx-auto max-w-lg px-4 pb-8 pt-5">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <HomeMenu />
+          <div className="home-rise min-w-0 pt-0.5">
+            <p className="text-sm text-neutral-500">{hello || " "}</p>
+            <h1 className="text-3xl font-semibold leading-tight">{projectName || "Project"}</h1>
+          </div>
         </div>
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-white"
+          className="mt-1 shrink-0 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-white"
         >
           Add string
         </button>
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-2 text-[11px] text-neutral-500">
-        <span className="flex items-center gap-1">
-          <i className="inline-block h-3 w-3 rounded bg-zinc-200" /> empty
-        </span>
-        <span className="flex items-center gap-1">
-          <i className="inline-block h-3 w-3 rounded bg-amber-500" /> installing
-        </span>
-        <span className="flex items-center gap-1">
-          <i className="inline-block h-3 w-3 rounded bg-emerald-600" /> testing
-        </span>
-        <span className="flex items-center gap-1">
-          <i className="inline-block h-3 w-3 rounded bg-sky-600" /> submitted
-        </span>
       </div>
 
       {adding ? (
@@ -195,12 +197,6 @@ export default function HomePage() {
               stringKey={group.key}
               frames={group.frames}
               onDelete={setPendingDelete}
-              onStage={async (frameId, stage) => {
-                const current = await getFrame(frameId);
-                if (!current) return;
-                await saveFrame({ ...current, shopStage: stage });
-                await refresh();
-              }}
             />
           ))}
           {done.length ? (

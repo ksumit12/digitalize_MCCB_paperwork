@@ -27,11 +27,15 @@ export type ChecklistItem = {
   installerSign: string;
 };
 
+export type MicrologicModel = "2.2" | "5.2E";
+export type FaultKind = "unit" | "shunt";
+
 export type BreakerPosition = {
   position: number;
   inUse?: boolean;
   mccbSerialNumber: string;
   microLogicSerialNumber: string;
+  micrologicModel?: MicrologicModel;
   shuntTripBatchNumber: string;
   mccbInstalled: boolean;
   flexibarCapsRemoved: boolean;
@@ -156,6 +160,7 @@ export type Installer = {
 
 export type Frame = {
   id: string;
+  projectId?: string;
   stringId?: string;
   stringKey?: string;
   frameSlot?: string;
@@ -185,3 +190,52 @@ export type Frame = {
 };
 
 export type FrameStatus = "in_progress" | "testing" | "handed_over";
+
+export type Project = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
+
+export type Fault = {
+  id: string;
+  projectId: string;
+  frameId: string;
+  stringKey: string;
+  frameSlot: string;
+  hole: string;
+  kind: FaultKind;
+  oldMccb: string;
+  oldMl: string;
+  oldMlModel: MicrologicModel | "";
+  oldShunt: string;
+  reason: string;
+  raisedBy: string;
+  raisedAt: string;
+};
+
+export type BreakerRow = {
+  id: string;
+  projectId: string;
+  frameId: string;
+  stringKey: string;
+  frameSlot: string;
+  hole: string;
+  board: CbsdsLabel;
+  position: number;
+  inUse: number;
+  amps: AmpSetting;
+  mccbSerial: string;
+  mlSerial: string;
+  mlModel: MicrologicModel;
+  shuntBatch: string;
+  scannedBy: string;
+  scannedAt: string;
+  mccbInstalled: number;
+  flexibarCaps: number;
+  whipTerminated: number;
+  torqueLine: number;
+  torqueLoad: number;
+  mlSet: number;
+  updatedAt: string;
+};

@@ -46,6 +46,7 @@ function emptyBreaker(position: number): BreakerPosition {
     micrologicSettingConfirmed: false,
     mccbScannedBy: "",
     mccbScannedAt: "",
+    micrologicModel: "2.2",
   };
 }
 
@@ -80,6 +81,7 @@ export function needsShuntTrip(amps: BreakerPosition["micrologicSettingAmps"]): 
 }
 
 export function createEmptyFrame(opts?: {
+  projectId?: string;
   stringId?: string;
   stringKey?: string;
   frameSlot?: string;
@@ -98,6 +100,7 @@ export function createEmptyFrame(opts?: {
 
   return {
     id: generateId(),
+    projectId: opts?.projectId,
     stringId: opts?.frameSlot ?? opts?.stringId ?? "",
     stringKey: opts?.stringKey ?? "1",
     frameSlot: opts?.frameSlot ?? opts?.stringId ?? "",

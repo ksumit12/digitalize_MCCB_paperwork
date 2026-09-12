@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { ShopStageChips } from "@/components/ShopStageChips";
+import { useRef } from "react";
 import {
   FRAME_SLOTS,
   STRING_LEVELS,
@@ -11,28 +10,24 @@ import {
   workStatusClass,
   type FrameSlot,
 } from "@/lib/stringLayout";
-import { canTapAnyStage, stagePercent, stageShortLabel } from "@/lib/shopStage";
-import type { Frame, ShopStage } from "@/lib/types";
+import { stagePercent, stageShortLabel } from "@/lib/shopStage";
+import type { Frame } from "@/lib/types";
 
 export function StringBoard({
   stringKey,
   frames,
   onDelete,
-  onStage,
 }: {
   stringKey: string;
   frames: Frame[];
   onDelete?: (key: string) => void;
-  onStage?: (frameId: string, stage: ShopStage) => void | Promise<void>;
 }) {
   const hold = useRef<number | null>(null);
-  const [pickingId, setPickingId] = useState<string | null>(null);
   const bySlot = new Map<string, Frame>();
   for (const frame of frames) {
     const slot = slotFromFrame(frame);
     if (slot) bySlot.set(slot, frame);
   }
-  const picking = pickingId ? frames.find((f) => f.id === pickingId) : undefined;
 
   const total = FRAME_SLOTS.length;
   const counts = { installing: 0, testing: 0, submitted: 0 };
@@ -83,19 +78,6 @@ export function StringBoard({
           </span>
         </p>
       </div>
-      {picking && onStage && !picking.submitted ? (
-        <div className="mb-3 rounded-xl bg-zinc-50 p-2">
-          <p className="mb-1.5 text-[11px] font-medium text-neutral-500">
-            {slotFromFrame(picking) || picking.frameSlot} stage
-          </p>
-          <ShopStageChips
-            frame={picking}
-            onPick={(stage) => {
-              void Promise.resolve(onStage(picking.id, stage)).finally(() => setPickingId(null));
-            }}
-          />
-        </div>
-      ) : null}
       <div className="grid grid-cols-[1fr_2.25rem_1fr] items-stretch gap-2">
         <p className="text-center text-[10px] font-medium uppercase text-neutral-400">L</p>
         <p className="text-center text-[9px] uppercase leading-tight text-neutral-400">Manifold</p>
@@ -106,8 +88,6 @@ export function StringBoard({
               stringKey={stringKey}
               slot={`${n}L` as FrameSlot}
               frame={bySlot.get(`${n}L`)}
-              selected={pickingId === bySlot.get(`${n}L`)?.id}
-              onPickStage={onStage ? (id) => setPickingId((cur) => (cur === id ? null : id)) : undefined}
             />
             <div className="flex items-center justify-center rounded bg-red-800 text-[9px] font-bold text-white">
               {n}
@@ -116,8 +96,6 @@ export function StringBoard({
               stringKey={stringKey}
               slot={`${n}R` as FrameSlot}
               frame={bySlot.get(`${n}R`)}
-              selected={pickingId === bySlot.get(`${n}R`)?.id}
-              onPickStage={onStage ? (id) => setPickingId((cur) => (cur === id ? null : id)) : undefined}
             />
           </div>
         ))}
@@ -130,14 +108,10 @@ function SlotTile({
   stringKey,
   slot,
   frame,
-  selected,
-  onPickStage,
 }: {
   stringKey: string;
   slot: FrameSlot;
   frame?: Frame;
-  selected?: boolean;
-  onPickStage?: (frameId: string) => void;
 }) {
   if (!frame) {
     return (
@@ -152,33 +126,16 @@ function SlotTile({
   const status = workStatus(frame);
   const pct = stagePercent(frame);
   const label = stageShortLabel(frame);
-  const canStage = Boolean(onPickStage && canTapAnyStage(frame));
   return (
-    <div
-      className={`relative flex h-16 flex-col overflow-hidden rounded-xl ${workStatusClass(status)} ${
-        selected ? "ring-2 ring-ink ring-offset-1" : ""
-      }`}
+    <Link
+      href={`/frames/${frame.id}/map`}
+      className={`relative flex h-16 flex-col overflow-hidden rounded-xl ${workStatusClass(status)}`}
     >
-      <Link
-        href={`/frames/${frame.id}/map`}
-        className="flex flex-1 flex-col items-center justify-center px-1 pt-1 text-sm font-bold"
-      >
-        {slot}
-      </Link>
-      {canStage ? (
-        <button
-          type="button"
-          onClick={() => onPickStage?.(frame.id)}
-          className="pb-2.5 text-[10px] font-medium leading-none opacity-95"
-        >
-          {label || "Stage"}
-        </button>
-      ) : (
-        <p className="pb-2.5 text-center text-[10px] font-normal leading-none opacity-90">{label}</p>
-      )}
+      <span className="flex flex-1 flex-col items-center justify-center px-1 pt-1 text-sm font-bold">{slot}</span>
+      <span className="pb-2.5 text-center text-[10px] font-normal leading-none opacity-90">{label}</span>
       <span className="absolute inset-x-2 bottom-1 h-0.5 overflow-hidden rounded-full bg-white/30">
         <span className="block h-full rounded-full bg-white" style={{ width: `${pct}%` }} />
       </span>
-    </div>
+    </Link>
   );
 }

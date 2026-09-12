@@ -8,6 +8,7 @@ import {
   getBreaker,
   getTest,
   nextMapSlot,
+  parseSlot,
   patchBreaker,
   serialsDoneCount,
   usedCount,
@@ -17,13 +18,18 @@ import { frameLabel } from "@/lib/crew";
 import { stagePercent } from "@/lib/shopStage";
 import { useFrame } from "@/lib/useFrame";
 import type { BreakerTest, CbsdsLabel, FramePhase, IrReadings, Manufacturer, PassFail } from "@/lib/types";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { frame, loading, update, savedAt } = useFrame(id);
   const [slot, setSlot] = useState<{ label: CbsdsLabel; position: number } | null>(null);
   const [board, setBoard] = useState<CbsdsLabel | null>(null);
+
+  useEffect(() => {
+    const fromUrl = parseSlot(new URLSearchParams(window.location.search).get("slot"));
+    if (fromUrl) setSlot(fromUrl);
+  }, []);
 
   if (loading) return <p className="p-6 text-sm text-neutral-500">Loading…</p>;
   if (!frame) return <p className="p-6">Frame not found.</p>;
@@ -114,6 +120,9 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
         <BreakerSheet
           key={`${slot.label}${slot.position}`}
           slot={`${slot.label}${slot.position}`}
+          frameId={frame.id}
+          stringKey={frame.stringKey || "1"}
+          frameSlot={frame.frameSlot || frame.stringId || ""}
           breaker={breaker}
           test={test}
           mode={phase}

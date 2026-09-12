@@ -7,8 +7,9 @@ import { HandsPick, SignPick } from "@/components/SignPick";
 import { lastInstaller, rememberLastInstaller } from "@/lib/crew";
 import { emptySlot, serialsComplete, setAmp } from "@/lib/breaker";
 import { needsShuntTrip } from "@/lib/emptyFrame";
-import { normalizeInitials } from "@/lib/db";
-import type { BreakerPosition, BreakerTest } from "@/lib/types";
+import { addFault, normalizeInitials } from "@/lib/db";
+import { currentProjectId, mlModelOf } from "@/lib/project";
+import type { BreakerPosition, BreakerTest, FaultKind, MicrologicModel } from "@/lib/types";
 
 type Step = "amp" | "mccb" | "ml" | "shunt" | "done" | "megger";
 
@@ -25,6 +26,9 @@ export function BreakerSheet({
   breaker,
   test,
   mode,
+  frameId,
+  stringKey,
+  frameSlot,
   onBreaker,
   onTest,
   onClose,
@@ -34,12 +38,35 @@ export function BreakerSheet({
   breaker: BreakerPosition;
   test: BreakerTest;
   mode: "installation" | "testing";
+  frameId: string;
+  stringKey: string;
+  frameSlot: string;
   onBreaker: (b: BreakerPosition) => void;
   onTest: (t: BreakerTest) => void;
   onClose: () => void;
   onNext?: () => void;
 }) {
   const [step, setStep] = useState<Step>(() => (mode === "testing" ? "megger" : stepFor(breaker)));
+
+  async function logFault(kind: FaultKind) {
+    const who = lastInstaller()?.initials || breaker.mccbScannedBy || "";
+    await addFault({
+      id: crypto.randomUUID(),
+      projectId: currentProjectId(),
+      frameId,
+      stringKey,
+      frameSlot,
+      hole: slot,
+      kind,
+      oldMccb: kind === "unit" ? breaker.mccbSerialNumber : "",
+      oldMl: kind === "unit" ? breaker.microLogicSerialNumber : "",
+      oldMlModel: kind === "unit" ? mlModelOf(breaker) : "",
+      oldShunt: kind === "shunt" ? breaker.shuntTripBatchNumber : "",
+      reason: kind === "unit" ? "Replaced MCCB + Micrologic" : "Replaced shunt",
+      raisedBy: who,
+      raisedAt: new Date().toISOString(),
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-teal-50">
@@ -97,8 +124,14 @@ export function BreakerSheet({
             type="qr"
             kind="ml"
             value={breaker.microLogicSerialNumber}
+            model={mlModelOf(breaker)}
+            onModel={(micrologicModel) => onBreaker({ ...breaker, micrologicModel })}
             onConfirm={(v) => {
-              const next = { ...breaker, microLogicSerialNumber: v };
+              const next = {
+                ...breaker,
+                microLogicSerialNumber: v,
+                micrologicModel: mlModelOf(breaker),
+              };
               onBreaker(next);
               setStep(needsShuntTrip(next.micrologicSettingAmps) ? "shunt" : "done");
             }}
@@ -140,6 +173,27 @@ export function BreakerSheet({
               onBreaker(emptySlot(breaker));
               onClose();
             }}
+            onReplaceUnit={async () => {
+              await logFault("unit");
+              onBreaker({
+                ...breaker,
+                mccbSerialNumber: "",
+                microLogicSerialNumber: "",
+                mccbScannedBy: "",
+                mccbScannedAt: "",
+                micrologicSettingConfirmed: false,
+              });
+              setStep("mccb");
+            }}
+            onReplaceShunt={
+              needsShuntTrip(breaker.micrologicSettingAmps)
+                ? async () => {
+                    await logFault("shunt");
+                    onBreaker({ ...breaker, shuntTripBatchNumber: "" });
+                    setStep("shunt");
+                  }
+                : undefined
+            }
           />
         ) : null}
 
@@ -200,6 +254,8 @@ function CaptureStep({
   value,
   whoLabel,
   whoValue,
+  model,
+  onModel,
   onConfirm,
   onBack,
 }: {
@@ -209,6 +265,8 @@ function CaptureStep({
   value: string;
   whoLabel?: string;
   whoValue?: string;
+  model?: MicrologicModel;
+  onModel?: (m: MicrologicModel) => void;
   onConfirm: (v: string, who: string) => void;
   onBack: () => void;
 }) {
@@ -225,9 +283,20 @@ function CaptureStep({
   return (
     <div className="space-y-4 pt-4">
       <h2 className="text-2xl font-semibold">{title}</h2>
-      {whoLabel ? (
-        <div className="rounded-2xl bg-white p-3">
-          <HandsPick label={whoLabel} value={who} onChange={setWho} />
+      {kind === "ml" && onModel ? (
+        <div className="flex gap-2">
+          {(["2.2", "5.2E"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onModel(m)}
+              className={`flex-1 rounded-2xl py-4 text-lg font-semibold ${
+                (model || "2.2") === m ? "bg-ink text-white" : "bg-white"
+              }`}
+            >
+              ML {m}
+            </button>
+          ))}
         </div>
       ) : null}
       <SerialScanner
@@ -245,6 +314,11 @@ function CaptureStep({
         }}
         hero
       />
+      {whoLabel ? (
+        <div className="rounded-2xl bg-white p-3">
+          <HandsPick label={whoLabel} value={who} onChange={setWho} />
+        </div>
+      ) : null}
       {whoLabel && !initials ? (
         <p className="text-center text-sm text-red-700">Pick who scanned before Confirm.</p>
       ) : null}
@@ -270,6 +344,8 @@ function DoneStep({
   onEditSerials,
   onToggleMicrologic,
   onEmpty,
+  onReplaceUnit,
+  onReplaceShunt,
 }: {
   breaker: BreakerPosition;
   onClose: () => void;
@@ -278,9 +354,12 @@ function DoneStep({
   onEditSerials: () => void;
   onToggleMicrologic: () => void;
   onEmpty: () => void;
+  onReplaceUnit: () => void | Promise<void>;
+  onReplaceShunt?: () => void | Promise<void>;
 }) {
   const ready = serialsComplete(breaker);
   const set = breaker.micrologicSettingConfirmed;
+  const [replaceOpen, setReplaceOpen] = useState(false);
   return (
     <div className="space-y-4 pt-6">
       <h2 className="text-2xl font-semibold">{ready ? "Breaker logged" : "Almost there"}</h2>
@@ -292,7 +371,9 @@ function DoneStep({
           </button>
         </li>
         <li>MCCB {breaker.mccbSerialNumber || "—"}</li>
-        <li>Micrologic {breaker.microLogicSerialNumber || "—"}</li>
+        <li>
+          Micrologic ML {mlModelOf(breaker)} {breaker.microLogicSerialNumber || "—"}
+        </li>
         {needsShuntTrip(breaker.micrologicSettingAmps) ? (
           <li>Shunt batch {breaker.shuntTripBatchNumber || "—"}</li>
         ) : (
@@ -338,6 +419,44 @@ function DoneStep({
       <button type="button" onClick={onEmpty} className="w-full py-2 text-sm text-zinc-500">
         Mark empty
       </button>
+      {ready ? (
+        replaceOpen ? (
+          <div className="space-y-2 rounded-2xl bg-amber-50 p-3">
+            <p className="text-sm font-medium text-amber-950">Broken / replace</p>
+            <button
+              type="button"
+              onClick={() => void onReplaceUnit()}
+              className="w-full rounded-2xl bg-amber-700 py-4 text-lg font-semibold text-white"
+            >
+              Replace MCCB + ML
+            </button>
+            {onReplaceShunt ? (
+              <button
+                type="button"
+                onClick={() => void onReplaceShunt()}
+                className="w-full rounded-2xl border border-amber-300 bg-white py-3 text-sm font-semibold text-amber-950"
+              >
+                Replace shunt only
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setReplaceOpen(false)}
+              className="w-full py-1 text-sm text-amber-900"
+            >
+              Hide
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setReplaceOpen(true)}
+            className="w-full py-2 text-sm text-neutral-400"
+          >
+            Broken / replace
+          </button>
+        )
+      ) : null}
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { lastInstaller, rememberLastInstaller } from "@/lib/crew";
 import { normalizeInitials } from "@/lib/db";
 import { needsShuntTrip } from "@/lib/emptyFrame";
 import { useFrame } from "@/lib/useFrame";
-import type { AmpSetting, CbsdsLabel } from "@/lib/types";
+import type { AmpSetting, CbsdsLabel, MicrologicModel } from "@/lib/types";
 
 export default function BreakerPage({
   params,
@@ -49,28 +49,28 @@ export default function BreakerPage({
   return (
     <Screen title={`${cbsdsLabel}${position} — serials & torque`} savedAt={savedAt} backHref={`/frames/${id}/cbsds/${cbsdsLabel}`} backLabel={`CBSDS ${cbsdsLabel}`}>
       <Field label="MCCB serial">
-        <HandsPick
-          label="Who scanned this MCCB"
-          value={breaker.mccbScannedBy || lastInstaller()?.initials || ""}
-          onChange={(who) => patchBreaker({ ...breaker, mccbScannedBy: who })}
+        <SerialScanner
+          type="ocr"
+          kind="mccb"
+          label="MCCB serial"
+          value={breaker.mccbSerialNumber}
+          onConfirm={(v) => {
+            const who = normalizeInitials(breaker.mccbScannedBy || lastInstaller()?.initials || "");
+            if (!who) return;
+            rememberLastInstaller({ initials: who, name: lastInstaller()?.name || who });
+            patchBreaker({
+              ...breaker,
+              mccbSerialNumber: v,
+              mccbScannedBy: who,
+              mccbScannedAt: new Date().toISOString(),
+            });
+          }}
         />
         <div className="mt-3">
-          <SerialScanner
-            type="ocr"
-            kind="mccb"
-            label="MCCB serial"
-            value={breaker.mccbSerialNumber}
-            onConfirm={(v) => {
-              const who = normalizeInitials(breaker.mccbScannedBy || lastInstaller()?.initials || "");
-              if (!who) return;
-              rememberLastInstaller({ initials: who, name: lastInstaller()?.name || who });
-              patchBreaker({
-                ...breaker,
-                mccbSerialNumber: v,
-                mccbScannedBy: who,
-                mccbScannedAt: new Date().toISOString(),
-              });
-            }}
+          <HandsPick
+            label="Who scanned this MCCB"
+            value={breaker.mccbScannedBy || lastInstaller()?.initials || ""}
+            onChange={(who) => patchBreaker({ ...breaker, mccbScannedBy: who })}
           />
         </div>
         {!normalizeInitials(breaker.mccbScannedBy || lastInstaller()?.initials || "") ? (
@@ -82,6 +82,20 @@ export default function BreakerPage({
         ) : null}
       </Field>
       <Field label="Micrologic serial">
+        <div className="mb-2 flex gap-2">
+          {(["2.2", "5.2E"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => patchBreaker({ ...breaker, micrologicModel: m as MicrologicModel })}
+              className={`flex-1 rounded-lg border py-2 ${
+                (breaker.micrologicModel || "2.2") === m ? "bg-ink text-white" : "bg-white"
+              }`}
+            >
+              ML {m}
+            </button>
+          ))}
+        </div>
         <SerialScanner
           type="qr"
           kind="ml"
