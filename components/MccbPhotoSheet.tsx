@@ -79,6 +79,9 @@ export function MccbPhotoSheet({
     (async () => {
       setCamError("");
       try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Camera needs a secure connection (HTTPS or localhost). Open the app via the HTTPS link.");
+        }
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,

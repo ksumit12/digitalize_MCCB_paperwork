@@ -69,7 +69,21 @@ export function StringBoard({
               <span className="text-sm font-normal text-neutral-500"> · {tradeName}</span>
             ) : null}
           </h2>
-          <p className="text-[11px] tabular-nums text-neutral-400">{percent}%</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] tabular-nums text-neutral-400">{percent}%</p>
+            {onDelete ? (
+              <button
+                type="button"
+                aria-label={`Delete string ${stringKey}`}
+                onClick={() => onDelete(stringKey)}
+                className="rounded-md p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                  <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l.8 12a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9l.8-12M10 11v6M14 11v6" strokeLinecap="round" />
+                </svg>
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="flex h-1 overflow-hidden rounded-full bg-zinc-100">
           <span className="h-full bg-sky-600" style={{ width: slice(counts.submitted) }} />

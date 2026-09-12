@@ -58,6 +58,10 @@ export function SerialScanner({
 
     (async () => {
       try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setError("Camera needs a secure connection (HTTPS or localhost). Open the app via the HTTPS link.");
+          return;
+        }
         const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import("html5-qrcode");
         if (cancelled || !videoHost.current) return;
         videoHost.current.id = readerId;

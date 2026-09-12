@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { use } from "react";
+import { useRouter } from "next/navigation";
+import { use, useState } from "react";
 import { PdfButtons } from "@/components/PdfButtons";
 import { Field, TextInput } from "@/components/ui";
+import { deleteFrame } from "@/lib/db";
 import { useFrame } from "@/lib/useFrame";
 
 export default function MorePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const { frame, loading, update } = useFrame(id);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (loading) return <p className="p-6 text-sm">Loading…</p>;
   if (!frame) return <p className="p-6">Frame not found.</p>;
@@ -78,6 +83,45 @@ export default function MorePage({ params }: { params: Promise<{ id: string }> }
       <div className="rounded-2xl bg-white p-4">
         <PdfButtons frame={frame} />
       </div>
+
+      {confirmDelete ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-semibold text-red-900">Delete this frame?</p>
+          <p className="mt-1 text-sm text-red-800">
+            {slot} and all its data will be removed from this device and the database. This cannot be undone.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              className="rounded-xl bg-white px-4 py-2 text-sm font-medium ring-1 ring-rule"
+              disabled={deleting}
+              onClick={() => setConfirmDelete(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-xl bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={deleting}
+              onClick={async () => {
+                setDeleting(true);
+                await deleteFrame(id);
+                router.push("/");
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete frame"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirmDelete(true)}
+          className="w-full rounded-2xl border border-red-300 bg-white py-3 text-sm font-semibold text-red-700"
+        >
+          Delete this frame
+        </button>
+      )}
     </main>
   );
 }
