@@ -4,7 +4,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { use } from "react";
 import { SerialScanner } from "@/components/SerialScanner";
+import { HandsPick } from "@/components/SignPick";
 import { CheckRow, Field, Screen } from "@/components/ui";
+import { lastInstaller, rememberLastInstaller } from "@/lib/crew";
+import { normalizeInitials } from "@/lib/db";
 import { needsShuntTrip } from "@/lib/emptyFrame";
 import { useFrame } from "@/lib/useFrame";
 import type { AmpSetting, CbsdsLabel } from "@/lib/types";
@@ -46,13 +49,37 @@ export default function BreakerPage({
   return (
     <Screen title={`${cbsdsLabel}${position} — serials & torque`} savedAt={savedAt} backHref={`/frames/${id}/cbsds/${cbsdsLabel}`} backLabel={`CBSDS ${cbsdsLabel}`}>
       <Field label="MCCB serial">
-        <SerialScanner
-          type="ocr"
-          kind="mccb"
-          label="MCCB serial"
-          value={breaker.mccbSerialNumber}
-          onConfirm={(v) => patchBreaker({ ...breaker, mccbSerialNumber: v })}
+        <HandsPick
+          label="Who scanned this MCCB"
+          value={breaker.mccbScannedBy || lastInstaller()?.initials || ""}
+          onChange={(who) => patchBreaker({ ...breaker, mccbScannedBy: who })}
         />
+        <div className="mt-3">
+          <SerialScanner
+            type="ocr"
+            kind="mccb"
+            label="MCCB serial"
+            value={breaker.mccbSerialNumber}
+            onConfirm={(v) => {
+              const who = normalizeInitials(breaker.mccbScannedBy || lastInstaller()?.initials || "");
+              if (!who) return;
+              rememberLastInstaller({ initials: who, name: lastInstaller()?.name || who });
+              patchBreaker({
+                ...breaker,
+                mccbSerialNumber: v,
+                mccbScannedBy: who,
+                mccbScannedAt: new Date().toISOString(),
+              });
+            }}
+          />
+        </div>
+        {!normalizeInitials(breaker.mccbScannedBy || lastInstaller()?.initials || "") ? (
+          <p className="mt-2 text-sm text-red-700">Pick who scanned before Confirm.</p>
+        ) : breaker.mccbScannedAt ? (
+          <p className="mt-2 text-xs text-neutral-500">
+            Logged {breaker.mccbScannedBy} · {new Date(breaker.mccbScannedAt).toLocaleString()}
+          </p>
+        ) : null}
       </Field>
       <Field label="Micrologic serial">
         <SerialScanner

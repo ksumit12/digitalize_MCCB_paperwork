@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
-import { SignPick } from "@/components/SignPick";
+import { HandsPick, SignPick } from "@/components/SignPick";
+import { lastInstaller, rememberLastInstaller } from "@/lib/crew";
 import { emptySlot, serialsComplete, setAmp } from "@/lib/breaker";
 import { needsShuntTrip } from "@/lib/emptyFrame";
+import { normalizeInitials } from "@/lib/db";
 import type { BreakerPosition, BreakerTest } from "@/lib/types";
 
 type Step = "amp" | "mccb" | "ml" | "shunt" | "done" | "megger";
@@ -74,8 +76,15 @@ export function BreakerSheet({
             type="ocr"
             kind="mccb"
             value={breaker.mccbSerialNumber}
-            onConfirm={(v) => {
-              onBreaker({ ...breaker, mccbSerialNumber: v });
+            whoLabel="Who scanned this MCCB"
+            whoValue={breaker.mccbScannedBy || ""}
+            onConfirm={(v, who) => {
+              onBreaker({
+                ...breaker,
+                mccbSerialNumber: v,
+                mccbScannedBy: who,
+                mccbScannedAt: new Date().toISOString(),
+              });
               setStep("ml");
             }}
             onBack={() => setStep("amp")}
@@ -124,6 +133,9 @@ export function BreakerSheet({
             onNext={onNext}
             onEditAmp={() => setStep("amp")}
             onEditSerials={() => setStep("mccb")}
+            onToggleMicrologic={() =>
+              onBreaker({ ...breaker, micrologicSettingConfirmed: !breaker.micrologicSettingConfirmed })
+            }
             onEmpty={() => {
               onBreaker(emptySlot(breaker));
               onClose();
@@ -186,6 +198,8 @@ function CaptureStep({
   type,
   kind,
   value,
+  whoLabel,
+  whoValue,
   onConfirm,
   onBack,
 }: {
@@ -193,18 +207,59 @@ function CaptureStep({
   type: "qr" | "ocr";
   kind: "mccb" | "ml" | "shunt";
   value: string;
-  onConfirm: (v: string) => void;
+  whoLabel?: string;
+  whoValue?: string;
+  onConfirm: (v: string, who: string) => void;
   onBack: () => void;
 }) {
+  const [who, setWho] = useState(whoValue || "");
+
+  useEffect(() => {
+    if (who) return;
+    const last = lastInstaller()?.initials || "";
+    if (last) setWho(last);
+  }, [who]);
+
+  const initials = normalizeInitials(who);
+
   return (
     <div className="space-y-4 pt-4">
       <h2 className="text-2xl font-semibold">{title}</h2>
-      <SerialScanner type={type} kind={kind} label={title} value={value} onConfirm={onConfirm} hero />
+      {whoLabel ? (
+        <div className="rounded-2xl bg-white p-3">
+          <HandsPick label={whoLabel} value={who} onChange={setWho} />
+        </div>
+      ) : null}
+      <SerialScanner
+        type={type}
+        kind={kind}
+        label={title}
+        value={value}
+        onConfirm={(v) => {
+          if (whoLabel && !initials) return;
+          const last = lastInstaller();
+          if (initials && (!last || last.initials !== initials)) {
+            rememberLastInstaller({ initials, name: last?.name || initials });
+          }
+          onConfirm(v, initials);
+        }}
+        hero
+      />
+      {whoLabel && !initials ? (
+        <p className="text-center text-sm text-red-700">Pick who scanned before Confirm.</p>
+      ) : null}
       <button type="button" onClick={onBack} className="w-full py-2 text-sm text-neutral-500">
         Back
       </button>
     </div>
   );
+}
+
+function formatWhen(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString();
 }
 
 function DoneStep({
@@ -213,6 +268,7 @@ function DoneStep({
   onNext,
   onEditAmp,
   onEditSerials,
+  onToggleMicrologic,
   onEmpty,
 }: {
   breaker: BreakerPosition;
@@ -220,9 +276,11 @@ function DoneStep({
   onNext?: () => void;
   onEditAmp: () => void;
   onEditSerials: () => void;
+  onToggleMicrologic: () => void;
   onEmpty: () => void;
 }) {
   const ready = serialsComplete(breaker);
+  const set = breaker.micrologicSettingConfirmed;
   return (
     <div className="space-y-4 pt-6">
       <h2 className="text-2xl font-semibold">{ready ? "Breaker logged" : "Almost there"}</h2>
@@ -240,7 +298,23 @@ function DoneStep({
         ) : (
           <li className="text-neutral-400">No shunt trip (32A)</li>
         )}
+        <li>
+          Scanned by {breaker.mccbScannedBy || "—"}
+          {breaker.mccbScannedAt ? ` · ${formatWhen(breaker.mccbScannedAt)}` : ""}
+        </li>
       </ul>
+      {ready ? (
+        <button
+          type="button"
+          onClick={onToggleMicrologic}
+          className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-lg font-semibold text-white ${
+            set ? "bg-emerald-600" : "bg-red-600"
+          }`}
+        >
+          <span className="h-3 w-3 rounded-full bg-white" />
+          {set ? "Micrologic set" : "Set Micrologic"}
+        </button>
+      ) : null}
       {!ready ? (
         <button type="button" onClick={onEditSerials} className="w-full rounded-2xl bg-ink py-4 text-white">
           Finish serials

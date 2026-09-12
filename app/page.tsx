@@ -6,8 +6,10 @@ import {
   addStringRun,
   archiveStringRun,
   deleteStringAndFrames,
+  getFrame,
   listFrames,
   listStringRuns,
+  saveFrame,
   unarchiveStringRun,
   type StringRun,
 } from "@/lib/db";
@@ -193,6 +195,12 @@ export default function HomePage() {
               stringKey={group.key}
               frames={group.frames}
               onDelete={setPendingDelete}
+              onStage={async (frameId, stage) => {
+                const current = await getFrame(frameId);
+                if (!current) return;
+                await saveFrame({ ...current, shopStage: stage });
+                await refresh();
+              }}
             />
           ))}
           {done.length ? (

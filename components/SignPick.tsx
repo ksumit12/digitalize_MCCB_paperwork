@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listInstallers } from "@/lib/db";
+import { rememberLastInstaller } from "@/lib/crew";
+import { listInstallers, normalizeInitials } from "@/lib/db";
 import type { Installer } from "@/lib/types";
 
 export function SignPick({
@@ -75,10 +76,42 @@ export function PeopleChips({
             onClick={() => onPick(p)}
             className={`rounded-full px-3 py-2 text-sm ${on ? "bg-ink text-white" : "bg-zinc-100"}`}
           >
-          {p.initials}
+            {p.initials}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+export function HandsPick({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (initials: string) => void;
+}) {
+  const initials = normalizeInitials(value);
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{label}</p>
+      <PeopleChips
+        selected={initials}
+        onPick={(p) => {
+          rememberLastInstaller(p);
+          onChange(p.initials);
+        }}
+      />
+      <input
+        value={value}
+        onChange={(e) => onChange(normalizeInitials(e.target.value))}
+        placeholder="Initials"
+        autoCapitalize="characters"
+        className="w-full rounded-xl border border-rule bg-white px-3 py-3 text-lg uppercase"
+      />
     </div>
   );
 }

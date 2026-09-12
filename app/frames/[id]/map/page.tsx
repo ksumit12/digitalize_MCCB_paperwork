@@ -12,7 +12,9 @@ import {
   serialsDoneCount,
   usedCount,
 } from "@/lib/breaker";
+import { ShopStageChips } from "@/components/ShopStageChips";
 import { frameLabel } from "@/lib/crew";
+import { stagePercent } from "@/lib/shopStage";
 import { useFrame } from "@/lib/useFrame";
 import type { BreakerTest, CbsdsLabel, FramePhase, IrReadings, Manufacturer, PassFail } from "@/lib/types";
 import { use, useState } from "react";
@@ -29,6 +31,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   const phase: FramePhase = frame.phase === "testing" ? "testing" : "installation";
   const testing = phase === "testing";
   const name = frameLabel(frame);
+  const shopPct = stagePercent(frame);
   const breaker = slot ? getBreaker(frame, slot.label, slot.position) : undefined;
   const test = slot ? getTest(frame, slot.label, slot.position) : undefined;
 
@@ -48,7 +51,20 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
           {serialsDoneCount(frame)} / {usedCount(frame) || 0} serials
           {savedAt ? ` · saved ${savedAt}` : ""}
         </p>
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/25">
+          <span className="block h-full rounded-full bg-white" style={{ width: `${shopPct}%` }} />
+        </div>
+        <p className="mt-1 text-[11px] tabular-nums opacity-80">{shopPct}%</p>
       </div>
+
+      {!frame.submitted ? (
+        <div className="mb-3">
+          <ShopStageChips
+            frame={frame}
+            onPick={(stage) => update((f) => ({ ...f, shopStage: stage }))}
+          />
+        </div>
+      ) : null}
 
       {frame.submitted ? (
         <p className="mb-3 rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900">

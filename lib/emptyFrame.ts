@@ -44,6 +44,8 @@ function emptyBreaker(position: number): BreakerPosition {
     torqueLoadSideConfirmed: false,
     micrologicSettingAmps: "",
     micrologicSettingConfirmed: false,
+    mccbScannedBy: "",
+    mccbScannedAt: "",
   };
 }
 
@@ -100,6 +102,7 @@ export function createEmptyFrame(opts?: {
     stringKey: opts?.stringKey ?? "1",
     frameSlot: opts?.frameSlot ?? opts?.stringId ?? "",
     submitted: false,
+    shopStage: "",
     installerInitials: opts?.installerInitials ?? "",
     installerName: opts?.installerName?.trim() || sign,
     testerInitials: opts?.testerInitials ?? "",

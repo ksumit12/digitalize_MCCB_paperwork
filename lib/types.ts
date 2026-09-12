@@ -5,6 +5,21 @@ export type AmpSetting = 32 | 63 | 100 | "";
 export type Manufacturer = "RN Baker" | "SMBE" | "";
 export type FramePhase = "installation" | "testing";
 export type WorkStatus = "installing" | "testing" | "submitted";
+export type ShopStage =
+  | ""
+  | "steel"
+  | "ladders"
+  | "cable"
+  | "boards"
+  | "bolts"
+  | "glands"
+  | "earth"
+  | "breakers"
+  | "mount"
+  | "whips"
+  | "torque"
+  | "testing"
+  | "submitted";
 
 export type ChecklistItem = {
   ticked: boolean;
@@ -27,6 +42,8 @@ export type BreakerPosition = {
   torqueLoadSideConfirmed: boolean;
   micrologicSettingAmps: AmpSetting;
   micrologicSettingConfirmed: boolean;
+  mccbScannedBy?: string;
+  mccbScannedAt?: string;
 };
 
 export type Cbsds = {
@@ -143,6 +160,7 @@ export type Frame = {
   stringKey?: string;
   frameSlot?: string;
   submitted?: boolean;
+  shopStage?: ShopStage;
   installerInitials?: string;
   installerName?: string;
   testerInitials?: string;

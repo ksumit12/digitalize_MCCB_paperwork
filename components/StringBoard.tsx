@@ -1,39 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { ShopStageChips } from "@/components/ShopStageChips";
 import {
   FRAME_SLOTS,
   STRING_LEVELS,
   slotFromFrame,
   workStatus,
   workStatusClass,
-  workStatusLabel,
   type FrameSlot,
 } from "@/lib/stringLayout";
-import type { Frame } from "@/lib/types";
+import { canTapAnyStage, stagePercent, stageShortLabel } from "@/lib/shopStage";
+import type { Frame, ShopStage } from "@/lib/types";
 
 export function StringBoard({
   stringKey,
   frames,
   onDelete,
+  onStage,
 }: {
   stringKey: string;
   frames: Frame[];
   onDelete?: (key: string) => void;
+  onStage?: (frameId: string, stage: ShopStage) => void | Promise<void>;
 }) {
   const hold = useRef<number | null>(null);
+  const [pickingId, setPickingId] = useState<string | null>(null);
   const bySlot = new Map<string, Frame>();
   for (const frame of frames) {
     const slot = slotFromFrame(frame);
     if (slot) bySlot.set(slot, frame);
   }
+  const picking = pickingId ? frames.find((f) => f.id === pickingId) : undefined;
 
   const total = FRAME_SLOTS.length;
   const counts = { installing: 0, testing: 0, submitted: 0 };
   for (const frame of frames) counts[workStatus(frame)] += 1;
   const percent = Math.round((counts.submitted / total) * 100);
-  const slice = (n: number) => `${(n / total) * 100}%`;
 
   function clearHold() {
     if (hold.current != null) window.clearTimeout(hold.current);
@@ -64,10 +68,8 @@ export function StringBoard({
           <h2 className="text-lg font-semibold">{stringKey}</h2>
           <p className="text-[11px] tabular-nums text-neutral-400">{percent}%</p>
         </div>
-        <div className="flex h-1 overflow-hidden rounded-full bg-zinc-100">
-          <span className="h-full bg-sky-600" style={{ width: slice(counts.submitted) }} />
-          <span className="h-full bg-emerald-500" style={{ width: slice(counts.testing) }} />
-          <span className="h-full bg-amber-400" style={{ width: slice(counts.installing) }} />
+        <div className="h-1 overflow-hidden rounded-full bg-zinc-100">
+          <span className="block h-full bg-sky-600" style={{ width: `${percent}%` }} />
         </div>
         <p className="mt-1.5 flex flex-wrap gap-x-2.5 text-[10px] text-neutral-500">
           <span>
@@ -81,17 +83,42 @@ export function StringBoard({
           </span>
         </p>
       </div>
+      {picking && onStage && !picking.submitted ? (
+        <div className="mb-3 rounded-xl bg-zinc-50 p-2">
+          <p className="mb-1.5 text-[11px] font-medium text-neutral-500">
+            {slotFromFrame(picking) || picking.frameSlot} stage
+          </p>
+          <ShopStageChips
+            frame={picking}
+            onPick={(stage) => {
+              void Promise.resolve(onStage(picking.id, stage)).finally(() => setPickingId(null));
+            }}
+          />
+        </div>
+      ) : null}
       <div className="grid grid-cols-[1fr_2.25rem_1fr] items-stretch gap-2">
         <p className="text-center text-[10px] font-medium uppercase text-neutral-400">L</p>
         <p className="text-center text-[9px] uppercase leading-tight text-neutral-400">Manifold</p>
         <p className="text-center text-[10px] font-medium uppercase text-neutral-400">R</p>
         {STRING_LEVELS.map((n) => (
           <div key={n} className="contents">
-            <SlotTile stringKey={stringKey} slot={`${n}L` as FrameSlot} frame={bySlot.get(`${n}L`)} />
+            <SlotTile
+              stringKey={stringKey}
+              slot={`${n}L` as FrameSlot}
+              frame={bySlot.get(`${n}L`)}
+              selected={pickingId === bySlot.get(`${n}L`)?.id}
+              onPickStage={onStage ? (id) => setPickingId((cur) => (cur === id ? null : id)) : undefined}
+            />
             <div className="flex items-center justify-center rounded bg-red-800 text-[9px] font-bold text-white">
               {n}
             </div>
-            <SlotTile stringKey={stringKey} slot={`${n}R` as FrameSlot} frame={bySlot.get(`${n}R`)} />
+            <SlotTile
+              stringKey={stringKey}
+              slot={`${n}R` as FrameSlot}
+              frame={bySlot.get(`${n}R`)}
+              selected={pickingId === bySlot.get(`${n}R`)?.id}
+              onPickStage={onStage ? (id) => setPickingId((cur) => (cur === id ? null : id)) : undefined}
+            />
           </div>
         ))}
       </div>
@@ -103,29 +130,55 @@ function SlotTile({
   stringKey,
   slot,
   frame,
+  selected,
+  onPickStage,
 }: {
   stringKey: string;
   slot: FrameSlot;
   frame?: Frame;
+  selected?: boolean;
+  onPickStage?: (frameId: string) => void;
 }) {
   if (!frame) {
     return (
       <Link
         href={`/frames/new?string=${encodeURIComponent(stringKey)}&slot=${slot}`}
-        className="flex h-12 items-center justify-center rounded-xl bg-zinc-100 text-sm font-bold text-zinc-400"
+        className="flex h-16 items-center justify-center rounded-xl bg-zinc-100 text-sm font-bold text-zinc-400"
       >
         {slot}
       </Link>
     );
   }
   const status = workStatus(frame);
+  const pct = stagePercent(frame);
+  const label = stageShortLabel(frame);
+  const canStage = Boolean(onPickStage && canTapAnyStage(frame));
   return (
-    <Link
-      href={`/frames/${frame.id}/map`}
-      className={`flex h-12 flex-col items-center justify-center rounded-xl text-sm font-bold ${workStatusClass(status)}`}
+    <div
+      className={`relative flex h-16 flex-col overflow-hidden rounded-xl ${workStatusClass(status)} ${
+        selected ? "ring-2 ring-ink ring-offset-1" : ""
+      }`}
     >
-      {slot}
-      <span className="text-[9px] font-normal leading-none opacity-90">{workStatusLabel(status)}</span>
-    </Link>
+      <Link
+        href={`/frames/${frame.id}/map`}
+        className="flex flex-1 flex-col items-center justify-center px-1 pt-1 text-sm font-bold"
+      >
+        {slot}
+      </Link>
+      {canStage ? (
+        <button
+          type="button"
+          onClick={() => onPickStage?.(frame.id)}
+          className="pb-2.5 text-[10px] font-medium leading-none opacity-95"
+        >
+          {label || "Stage"}
+        </button>
+      ) : (
+        <p className="pb-2.5 text-center text-[10px] font-normal leading-none opacity-90">{label}</p>
+      )}
+      <span className="absolute inset-x-2 bottom-1 h-0.5 overflow-hidden rounded-full bg-white/30">
+        <span className="block h-full rounded-full bg-white" style={{ width: `${pct}%` }} />
+      </span>
+    </div>
   );
 }

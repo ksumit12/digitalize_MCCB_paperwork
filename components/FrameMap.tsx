@@ -34,7 +34,7 @@ export function FrameMap({
           microLogicSerialNumber: "",
         });
         return (
-          <div key={label} className="flex items-center gap-2">
+          <div key={label} className="flex items-start gap-2">
             <button
               type="button"
               onClick={() => onBoard(label)}
@@ -47,7 +47,7 @@ export function FrameMap({
                 {phase === "testing" ? (boardDone ? "IR" : "test") : frame.manufacturer ? "mfr" : "pick"}
               </span>
             </button>
-            <div className="grid flex-1 grid-cols-8 gap-1.5">
+            <div className="grid flex-1 grid-cols-8 gap-x-1.5 gap-y-0">
               {cbsds.breakerPositions.map((b) => {
                 const used = isUsed(b);
                 const done = serialsComplete(b);
@@ -55,25 +55,35 @@ export function FrameMap({
                 const amps = b.micrologicSettingAmps;
                 const colors = amps ? AMP_COLORS[amps] : null;
                 return (
-                  <button
-                    key={slotId(label, b.position)}
-                    type="button"
-                    onClick={() => onSlot(label, b.position)}
-                    className={[
-                      "relative aspect-square rounded-lg text-[11px] font-semibold",
-                      !used && "bg-zinc-200 text-zinc-400",
-                      used && !done && colors && `bg-white ring-2 ${colors.ring} ${colors.label}`,
-                      used && done && colors && `${colors.fill} text-white`,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    {label}
-                    {b.position}
-                    {tested ? (
-                      <span className="absolute right-0.5 top-0.5 text-[9px] leading-none">✓</span>
-                    ) : null}
-                  </button>
+                  <div key={slotId(label, b.position)} className="flex flex-col items-center">
+                    <button
+                      type="button"
+                      onClick={() => onSlot(label, b.position)}
+                      className={[
+                        "relative aspect-square w-full rounded-lg text-[11px] font-semibold",
+                        !used && "bg-zinc-200 text-zinc-400",
+                        used && !done && colors && `bg-white ring-2 ${colors.ring} ${colors.label}`,
+                        used && done && colors && `${colors.fill} text-white`,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      {label}
+                      {b.position}
+                      {tested ? (
+                        <span className="absolute right-0.5 top-0.5 text-[9px] leading-none">✓</span>
+                      ) : null}
+                    </button>
+                    <span className="flex h-3 items-center justify-center">
+                      {used ? (
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            b.micrologicSettingConfirmed ? "bg-emerald-500" : "bg-red-500"
+                          }`}
+                        />
+                      ) : null}
+                    </span>
+                  </div>
                 );
               })}
             </div>
@@ -94,6 +104,12 @@ export function FrameMap({
           <i className="inline-block h-3 w-3 rounded bg-violet-500" /> 100A
         </span>
         <span>✓ megger done (testing)</span>
+        <span className="flex items-center gap-1">
+          <i className="inline-block h-2 w-2 rounded-full bg-red-500" /> Micrologic not set
+        </span>
+        <span className="flex items-center gap-1">
+          <i className="inline-block h-2 w-2 rounded-full bg-emerald-400" /> Micrologic set
+        </span>
       </div>
     </div>
   );

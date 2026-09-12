@@ -72,6 +72,8 @@ export function emptySlot(b: BreakerPosition): BreakerPosition {
     shuntTripBatchNumber: "",
     micrologicSettingAmps: "",
     micrologicSettingConfirmed: false,
+    mccbScannedBy: "",
+    mccbScannedAt: "",
   };
 }
 

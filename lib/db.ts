@@ -67,6 +67,7 @@ export function withFrameDefaults(frame: Frame): Frame {
     stringId: frame.stringId || frame.frameSlot || "",
     testerInitials: frame.testerInitials ?? "",
     testerName: frame.testerName ?? "",
+    shopStage: frame.shopStage ?? "",
     moduleFrameSerialNumber:
       frame.moduleFrameSerialNumber?.trim() ||
       [frame.stringKey?.trim() || "1", frame.frameSlot || frame.stringId || ""]
@@ -122,6 +123,12 @@ export async function listInstallers(): Promise<Installer[]> {
     for (const raw of [frame.installerInitials, frame.testerInitials]) {
       const key = normalizeInitials(raw || "");
       if (key) used.set(key, (used.get(key) || 0) + 1);
+    }
+    for (const b of frame.cbsds.flatMap((c) => c.breakerPositions)) {
+      for (const raw of [b.mccbScannedBy]) {
+        const key = normalizeInitials(raw || "");
+        if (key) used.set(key, (used.get(key) || 0) + 1);
+      }
     }
   }
   return people.sort(
