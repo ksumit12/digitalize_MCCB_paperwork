@@ -7,3 +7,5 @@ tsconfig.tsbuildinfo
 lib/pdf.ts.bak
 serials-inbox/*
 !serials-inbox/.gitkeep
+/data
+.env*.local

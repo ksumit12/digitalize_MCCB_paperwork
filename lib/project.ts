@@ -110,3 +110,38 @@ export function hydrateFrame(frame: Frame, rows: BreakerRow[]): Frame {
     })),
   };
 }
+
+export function withFrameDefaults(frame: Frame): Frame {
+  return {
+    ...frame,
+    projectId: frame.projectId || DEFAULT_PROJECT_ID,
+    manufacturer: frame.manufacturer ?? "",
+    phase: frame.phase === "testing" ? "testing" : "installation",
+    stringKey: frame.stringKey?.trim() || "1",
+    frameSlot: frame.frameSlot || frame.stringId || "",
+    stringId: frame.stringId || frame.frameSlot || "",
+    testerInitials: frame.testerInitials ?? "",
+    testerName: frame.testerName ?? "",
+    shopStage: frame.shopStage ?? "",
+    moduleFrameSerialNumber:
+      frame.moduleFrameSerialNumber?.trim() ||
+      [frame.stringKey?.trim() || "1", frame.frameSlot || frame.stringId || ""]
+        .filter(Boolean)
+        .join("-"),
+    handover: {
+      ...frame.handover,
+      notes: frame.handover?.notes ?? "",
+    },
+  };
+}
+
+export type StringRun = {
+  key: string;
+  createdAt: string;
+  archivedAt?: string;
+};
+
+export type StringRecord = StringRun & {
+  id: string;
+  projectId: string;
+};

@@ -1,17 +1,17 @@
 import Dexie, { type EntityTable } from "dexie";
-import { explodeBreakers, hydrateFrame, DEFAULT_PROJECT_ID, currentProjectId, setCurrentProjectId } from "./project";
+import {
+  explodeBreakers,
+  hydrateFrame,
+  withFrameDefaults,
+  DEFAULT_PROJECT_ID,
+  currentProjectId,
+  setCurrentProjectId,
+  type StringRecord,
+  type StringRun,
+} from "./project";
 import type { BreakerRow, Fault, Frame, Installer, Project } from "./types";
 
-export type StringRun = {
-  key: string;
-  createdAt: string;
-  archivedAt?: string;
-};
-
-export type StringRecord = StringRun & {
-  id: string;
-  projectId: string;
-};
+export type { StringRecord, StringRun };
 
 class FrameDb extends Dexie {
   frames!: EntityTable<Frame, "id">;
@@ -112,31 +112,331 @@ class FrameDb extends Dexie {
   }
 }
 
-export function withFrameDefaults(frame: Frame): Frame {
+export const db = new FrameDb();
+
+async function apiGet<T>(action: string, extra: Record<string, string> = {}): Promise<T | null> {
+  try {
+    const params = new URLSearchParams({ action, projectId: currentProjectId(), ...extra });
+    const res = await fetch(`/api/data?${params.toString()}`, { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok) return null;
+    return data as T;
+  } catch {
+    return null;
+  }
+}
+
+async function apiPost(body: Record<string, unknown>): Promise<boolean> {
+  try {
+    const res = await fetch("/api/data", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+type Outbox = {
+  frames: string[];
+  deletedFrames: string[];
+  strings: StringRecord[];
+  deletedStrings: { projectId: string; key: string }[];
+  projects: Project[];
+  deletedProjects: string[];
+  faults: Fault[];
+  installers: Installer[];
+};
+
+const OUTBOX_KEY = "mccb-outbox";
+const SYNC_EVENT = "mccb-sync";
+
+function emptyOutbox(): Outbox {
   return {
-    ...frame,
-    projectId: frame.projectId || DEFAULT_PROJECT_ID,
-    manufacturer: frame.manufacturer ?? "",
-    phase: frame.phase === "testing" ? "testing" : "installation",
-    stringKey: frame.stringKey?.trim() || "1",
-    frameSlot: frame.frameSlot || frame.stringId || "",
-    stringId: frame.stringId || frame.frameSlot || "",
-    testerInitials: frame.testerInitials ?? "",
-    testerName: frame.testerName ?? "",
-    shopStage: frame.shopStage ?? "",
-    moduleFrameSerialNumber:
-      frame.moduleFrameSerialNumber?.trim() ||
-      [frame.stringKey?.trim() || "1", frame.frameSlot || frame.stringId || ""]
-        .filter(Boolean)
-        .join("-"),
-    handover: {
-      ...frame.handover,
-      notes: frame.handover?.notes ?? "",
-    },
+    frames: [],
+    deletedFrames: [],
+    strings: [],
+    deletedStrings: [],
+    projects: [],
+    deletedProjects: [],
+    faults: [],
+    installers: [],
   };
 }
 
-export const db = new FrameDb();
+function readOutbox(): Outbox {
+  try {
+    const raw = localStorage.getItem(OUTBOX_KEY);
+    if (!raw) return emptyOutbox();
+    return { ...emptyOutbox(), ...JSON.parse(raw) };
+  } catch {
+    return emptyOutbox();
+  }
+}
+
+function writeOutbox(box: Outbox) {
+  localStorage.setItem(OUTBOX_KEY, JSON.stringify(box));
+}
+
+function queueFrame(id: string) {
+  const box = readOutbox();
+  if (!box.frames.includes(id)) box.frames.push(id);
+  box.deletedFrames = box.deletedFrames.filter((x) => x !== id);
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueDeletedFrame(id: string) {
+  const box = readOutbox();
+  box.frames = box.frames.filter((x) => x !== id);
+  if (!box.deletedFrames.includes(id)) box.deletedFrames.push(id);
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueString(row: StringRecord) {
+  const box = readOutbox();
+  box.strings = box.strings.filter((s) => s.id !== row.id);
+  box.strings.push(row);
+  box.deletedStrings = box.deletedStrings.filter((s) => !(s.projectId === row.projectId && s.key === row.key));
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueDeletedString(projectId: string, key: string) {
+  const box = readOutbox();
+  box.strings = box.strings.filter((s) => !(s.projectId === projectId && s.key === key));
+  if (!box.deletedStrings.some((s) => s.projectId === projectId && s.key === key)) {
+    box.deletedStrings.push({ projectId, key });
+  }
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueProject(project: Project) {
+  const box = readOutbox();
+  box.projects = box.projects.filter((p) => p.id !== project.id);
+  box.projects.push(project);
+  box.deletedProjects = box.deletedProjects.filter((id) => id !== project.id);
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueDeletedProject(id: string) {
+  const box = readOutbox();
+  box.projects = box.projects.filter((p) => p.id !== id);
+  if (!box.deletedProjects.includes(id)) box.deletedProjects.push(id);
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueFault(fault: Fault) {
+  const box = readOutbox();
+  box.faults = box.faults.filter((f) => f.id !== fault.id);
+  box.faults.push(fault);
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueInstaller(installer: Installer) {
+  const box = readOutbox();
+  box.installers = box.installers.filter((i) => i.initials !== installer.initials);
+  box.installers.push(installer);
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let flushing = false;
+let syncStarted = false;
+let lastPull = 0;
+
+function scheduleFlush() {
+  if (typeof window === "undefined") return;
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(() => {
+    void flushOutbox();
+  }, 2000);
+}
+
+function notifySync() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SYNC_EVENT));
+}
+
+async function flushOutbox() {
+  if (flushing || typeof window === "undefined") return;
+  flushing = true;
+  try {
+    const box = readOutbox();
+    const next = emptyOutbox();
+    for (const id of box.deletedFrames) {
+      if (!(await apiPost({ action: "deleteFrame", id }))) next.deletedFrames.push(id);
+    }
+    for (const id of box.frames) {
+      const frame = await db.frames.get(id);
+      if (!frame) continue;
+      if (!(await apiPost({ action: "saveFrame", frame }))) next.frames.push(id);
+    }
+    for (const row of box.deletedStrings) {
+      if (!(await apiPost({ action: "deleteString", projectId: row.projectId, key: row.key }))) {
+        next.deletedStrings.push(row);
+      }
+    }
+    for (const row of box.strings) {
+      if (!(await apiPost({ action: "putString", string: row }))) next.strings.push(row);
+    }
+    for (const id of box.deletedProjects) {
+      if (!(await apiPost({ action: "deleteProject", id }))) next.deletedProjects.push(id);
+    }
+    for (const project of box.projects) {
+      if (!(await apiPost({ action: "putProject", project }))) next.projects.push(project);
+    }
+    for (const fault of box.faults) {
+      if (!(await apiPost({ action: "addFault", fault }))) next.faults.push(fault);
+    }
+    for (const installer of box.installers) {
+      if (!(await apiPost({ action: "saveInstaller", installer }))) next.installers.push(installer);
+    }
+    writeOutbox(next);
+  } finally {
+    flushing = false;
+  }
+}
+
+async function putLocalFrame(frame: Frame) {
+  const next = withFrameDefaults(frame);
+  const rows = explodeBreakers(next);
+  await db.transaction("rw", db.frames, db.breakers, async () => {
+    await db.frames.put(next);
+    await db.breakers.where("frameId").equals(next.id).delete();
+    if (rows.length) await db.breakers.bulkPut(rows);
+  });
+}
+
+function newer(a?: string, b?: string) {
+  return Date.parse(a || "") > Date.parse(b || "");
+}
+
+async function pullRemote(): Promise<boolean> {
+  const pid = currentProjectId();
+  const box = readOutbox();
+  const dirty = new Set(box.frames);
+  let changed = false;
+
+  const projects = await apiGet<Project[]>("listProjects");
+  if (projects?.length) {
+    for (const p of projects) {
+      if (box.deletedProjects.includes(p.id)) continue;
+      const local = await db.projects.get(p.id);
+      if (!local) {
+        await db.projects.put(p);
+        changed = true;
+      }
+    }
+  }
+
+  const strings = await apiGet<StringRun[]>("listStrings");
+  if (strings) {
+    for (const run of strings) {
+      if (box.deletedStrings.some((s) => s.projectId === pid && s.key === run.key)) continue;
+      const id = `${pid}:${run.key}`;
+      const local = await db.strings.get(id);
+      if (!local) {
+        await db.strings.put({ id, projectId: pid, ...run });
+        await db.stringRuns.put(run);
+        changed = true;
+      } else if (Boolean(local.archivedAt) !== Boolean(run.archivedAt)) {
+        await db.strings.put({ ...local, archivedAt: run.archivedAt });
+        await db.stringRuns.put(run);
+        changed = true;
+      }
+    }
+  }
+
+  const frames = await apiGet<Frame[]>("listFrames");
+  if (frames) {
+    for (const remote of frames) {
+      if (dirty.has(remote.id) || box.deletedFrames.includes(remote.id)) continue;
+      const local = await db.frames.get(remote.id);
+      if (!local || newer(remote.updatedAt, local.updatedAt)) {
+        await putLocalFrame(remote);
+        changed = true;
+      }
+    }
+  }
+
+  const faults = await apiGet<Fault[]>("listFaults");
+  if (faults) {
+    for (const fault of faults) {
+      const local = await db.faults.get(fault.id);
+      if (!local) {
+        await db.faults.put(fault);
+        changed = true;
+      }
+    }
+  }
+
+  const installers = await apiGet<Installer[]>("listInstallers");
+  if (installers) {
+    for (const person of installers) {
+      const local = await db.installers.get(person.initials);
+      if (!local) {
+        await db.installers.put(person);
+        changed = true;
+      }
+    }
+  }
+
+  lastPull = Date.now();
+  return changed;
+}
+
+async function seedIfEmpty() {
+  const status = await apiGet<{ empty: boolean }>("status");
+  if (!status?.empty) return;
+  const [projects, strings, frames, faults, installers] = await Promise.all([
+    db.projects.toArray(),
+    db.strings.toArray(),
+    db.frames.toArray(),
+    db.faults.toArray().catch(() => [] as Fault[]),
+    db.installers.toArray(),
+  ]);
+  if (!frames.length && !strings.length) return;
+  await apiPost({ action: "import", projects, strings, frames, faults, installers });
+}
+
+export function startBackgroundSync() {
+  if (syncStarted || typeof window === "undefined") return;
+  syncStarted = true;
+  void (async () => {
+    await seedIfEmpty();
+    await flushOutbox();
+    if (await pullRemote()) notifySync();
+  })();
+  window.setInterval(() => {
+    void (async () => {
+      await flushOutbox();
+      if (Date.now() - lastPull < 20000) return;
+      if (await pullRemote()) notifySync();
+    })();
+  }, 30000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    void (async () => {
+      await flushOutbox();
+      if (await pullRemote()) notifySync();
+    })();
+  });
+}
+
+export function onSharedSync(handler: () => void) {
+  if (typeof window === "undefined") return () => {};
+  startBackgroundSync();
+  window.addEventListener(SYNC_EVENT, handler);
+  return () => window.removeEventListener(SYNC_EVENT, handler);
+}
 
 async function hydrate(frame: Frame): Promise<Frame> {
   const base = withFrameDefaults(frame);
@@ -144,7 +444,12 @@ async function hydrate(frame: Frame): Promise<Frame> {
   return hydrateFrame(base, rows);
 }
 
+export function normalizeInitials(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^A-Z]/g, "");
+}
+
 export async function listFrames(): Promise<Frame[]> {
+  startBackgroundSync();
   const pid = currentProjectId();
   const all = await db.frames.toArray();
   const rows = all.filter((f) => (f.projectId || DEFAULT_PROJECT_ID) === pid);
@@ -153,8 +458,13 @@ export async function listFrames(): Promise<Frame[]> {
 }
 
 export async function getFrame(id: string): Promise<Frame | undefined> {
+  startBackgroundSync();
   const found = await db.frames.get(id);
-  return found ? hydrate(found) : undefined;
+  if (found) return hydrate(found);
+  const remote = await apiGet<Frame | null>("getFrame", { id });
+  if (!remote) return undefined;
+  await putLocalFrame(remote);
+  return hydrate(remote);
 }
 
 export async function saveFrame(frame: Frame): Promise<void> {
@@ -168,6 +478,7 @@ export async function saveFrame(frame: Frame): Promise<void> {
     await db.frames.put(next);
     if (rows.length) await db.breakers.bulkPut(rows);
   });
+  queueFrame(next.id);
 }
 
 export async function deleteFrame(id: string): Promise<void> {
@@ -176,10 +487,7 @@ export async function deleteFrame(id: string): Promise<void> {
     await db.breakers.where("frameId").equals(id).delete();
     await db.faults.where("frameId").equals(id).delete();
   });
-}
-
-export function normalizeInitials(raw: string): string {
-  return raw.trim().toUpperCase().replace(/[^A-Z]/g, "");
+  queueDeletedFrame(id);
 }
 
 export async function lookupInstaller(initials: string): Promise<Installer | undefined> {
@@ -191,10 +499,13 @@ export async function lookupInstaller(initials: string): Promise<Installer | und
 export async function saveInstaller(installer: Installer): Promise<void> {
   const initials = normalizeInitials(installer.initials);
   if (!initials) return;
-  await db.installers.put({ initials, name: installer.name.trim() });
+  const row = { initials, name: installer.name.trim() };
+  await db.installers.put(row);
+  queueInstaller(row);
 }
 
 export async function listInstallers(): Promise<Installer[]> {
+  startBackgroundSync();
   const [people, breakers] = await Promise.all([
     db.installers.toArray(),
     db.breakers.where("projectId").equals(currentProjectId()).toArray(),
@@ -210,6 +521,7 @@ export async function listInstallers(): Promise<Installer[]> {
 }
 
 export async function listStringRuns(): Promise<StringRun[]> {
+  startBackgroundSync();
   const pid = currentProjectId();
   const rows = await db.strings.where("projectId").equals(pid).toArray();
   if (rows.length) {
@@ -233,6 +545,7 @@ export async function archiveStringRun(key: string): Promise<void> {
     await db.strings.put(row);
     await db.stringRuns.put({ key: row.key, createdAt: row.createdAt, archivedAt: row.archivedAt });
   });
+  queueString(row);
 }
 
 export async function unarchiveStringRun(key: string): Promise<void> {
@@ -240,10 +553,12 @@ export async function unarchiveStringRun(key: string): Promise<void> {
   const id = `${pid}:${key}`;
   const existing = await db.strings.get(id);
   if (!existing) return;
+  const row = { ...existing, archivedAt: undefined };
   await db.transaction("rw", db.strings, db.stringRuns, async () => {
-    await db.strings.put({ ...existing, archivedAt: undefined });
+    await db.strings.put(row);
     await db.stringRuns.put({ key: existing.key, createdAt: existing.createdAt });
   });
+  queueString(row);
 }
 
 export async function addStringRun(key: string): Promise<void> {
@@ -251,16 +566,18 @@ export async function addStringRun(key: string): Promise<void> {
   if (!trimmed) return;
   const pid = currentProjectId();
   const now = new Date().toISOString();
+  const row: StringRecord = {
+    id: `${pid}:${trimmed}`,
+    projectId: pid,
+    key: trimmed,
+    createdAt: now,
+    archivedAt: undefined,
+  };
   await db.transaction("rw", db.strings, db.stringRuns, async () => {
-    await db.strings.put({
-      id: `${pid}:${trimmed}`,
-      projectId: pid,
-      key: trimmed,
-      createdAt: now,
-      archivedAt: undefined,
-    });
+    await db.strings.put(row);
     await db.stringRuns.put({ key: trimmed, createdAt: now, archivedAt: undefined });
   });
+  queueString(row);
 }
 
 export async function deleteStringAndFrames(key: string): Promise<void> {
@@ -282,6 +599,8 @@ export async function deleteStringAndFrames(key: string): Promise<void> {
     await db.stringRuns.delete(trimmed);
     await db.strings.delete(`${pid}:${trimmed}`);
   });
+  for (const id of ids) queueDeletedFrame(id);
+  queueDeletedString(pid, trimmed);
 }
 
 export async function findFrameBySlot(stringKey: string, frameSlot: string): Promise<Frame | undefined> {
@@ -297,6 +616,7 @@ export async function findFrameBySlot(stringKey: string, frameSlot: string): Pro
 }
 
 export async function listProjects(): Promise<Project[]> {
+  startBackgroundSync();
   const rows = await db.projects.toArray();
   if (rows.length) return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return [{ id: DEFAULT_PROJECT_ID, name: "Current project", createdAt: new Date().toISOString() }];
@@ -310,6 +630,7 @@ export async function addProject(name: string): Promise<Project> {
     createdAt: new Date().toISOString(),
   };
   await db.projects.put(project);
+  queueProject(project);
   return project;
 }
 
@@ -337,14 +658,18 @@ export async function deleteProject(id: string): Promise<{ ok: true } | { ok: fa
   if (currentProjectId() === id) {
     setCurrentProjectId(remaining[0].id);
   }
+  for (const frameId of frameIds) queueDeletedFrame(frameId);
+  queueDeletedProject(id);
   return { ok: true };
 }
 
 export async function addFault(fault: Fault): Promise<void> {
   await db.faults.put(fault);
+  queueFault(fault);
 }
 
 export async function listFaults(): Promise<Fault[]> {
+  startBackgroundSync();
   const pid = currentProjectId();
   const rows = await db.faults.where("projectId").equals(pid).toArray();
   return rows.sort((a, b) => b.raisedAt.localeCompare(a.raisedAt));
@@ -357,6 +682,7 @@ function normSerial(raw: string): string {
 export async function searchBreakerRows(query: string): Promise<BreakerRow[]> {
   const q = normSerial(query);
   if (q.length < 3) return [];
+  startBackgroundSync();
   const pid = currentProjectId();
   const rows = await db.breakers.where("projectId").equals(pid).toArray();
   return rows.filter(

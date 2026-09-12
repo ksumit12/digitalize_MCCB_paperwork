@@ -7,7 +7,6 @@ import {
   STRING_LEVELS,
   slotFromFrame,
   workStatus,
-  workStatusClass,
   type FrameSlot,
 } from "@/lib/stringLayout";
 import { stagePercent, stageShortLabel } from "@/lib/shopStage";
@@ -78,12 +77,14 @@ export function StringBoard({
           </span>
         </p>
       </div>
-      <div className="grid grid-cols-[1fr_2.25rem_1fr] items-stretch gap-2">
-        <p className="text-center text-[10px] font-medium uppercase text-neutral-400">L</p>
-        <p className="text-center text-[9px] uppercase leading-tight text-neutral-400">Manifold</p>
-        <p className="text-center text-[10px] font-medium uppercase text-neutral-400">R</p>
+      <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_2.25rem_1fr] gap-2">
+          <p className="text-center text-[10px] font-medium uppercase text-neutral-400">L</p>
+          <p className="text-center text-[9px] uppercase leading-tight text-neutral-400">Manifold</p>
+          <p className="text-center text-[10px] font-medium uppercase text-neutral-400">R</p>
+        </div>
         {STRING_LEVELS.map((n) => (
-          <div key={n} className="contents">
+          <div key={n} className="grid grid-cols-[1fr_2.25rem_1fr] items-stretch gap-2">
             <SlotTile
               stringKey={stringKey}
               slot={`${n}L` as FrameSlot}
@@ -126,14 +127,20 @@ function SlotTile({
   const status = workStatus(frame);
   const pct = stagePercent(frame);
   const label = stageShortLabel(frame);
+  const tone =
+    status === "submitted"
+      ? "bg-sky-600 text-white"
+      : status === "testing"
+        ? "bg-emerald-600 text-white"
+        : "bg-amber-500 text-white";
   return (
     <Link
       href={`/frames/${frame.id}/map`}
-      className={`relative flex h-16 flex-col overflow-hidden rounded-xl ${workStatusClass(status)}`}
+      className={`flex h-16 flex-col overflow-hidden rounded-xl ${tone}`}
     >
       <span className="flex flex-1 flex-col items-center justify-center px-1 pt-1 text-sm font-bold">{slot}</span>
-      <span className="pb-2.5 text-center text-[10px] font-normal leading-none opacity-90">{label}</span>
-      <span className="absolute inset-x-2 bottom-1 h-0.5 overflow-hidden rounded-full bg-white/30">
+      <span className="text-center text-[10px] font-normal leading-none opacity-90">{label}</span>
+      <span className="mx-2 mb-1 mt-1 h-0.5 overflow-hidden rounded-full bg-white/30">
         <span className="block h-full rounded-full bg-white" style={{ width: `${pct}%` }} />
       </span>
     </Link>

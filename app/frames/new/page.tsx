@@ -50,12 +50,14 @@ function NewFrameForm() {
             placeholder="String no. e.g. 4"
             className="w-full rounded-2xl border border-rule bg-white px-4 py-3"
           />
-          <div className="grid grid-cols-[2rem_1fr_1fr] gap-2">
-            <div />
-            <p className="text-center text-xs font-medium text-neutral-500">L</p>
-            <p className="text-center text-xs font-medium text-neutral-500">R</p>
+          <div className="space-y-2">
+            <div className="grid grid-cols-[2rem_1fr_1fr] gap-2">
+              <div />
+              <p className="text-center text-xs font-medium text-neutral-500">L</p>
+              <p className="text-center text-xs font-medium text-neutral-500">R</p>
+            </div>
             {STRING_LEVELS.map((n) => (
-              <div key={n} className="contents">
+              <div key={n} className="grid grid-cols-[2rem_1fr_1fr] gap-2">
                 <p className="flex items-center justify-center text-sm font-semibold text-neutral-400">{n}</p>
                 {(["L", "R"] as const).map((hand) => {
                   const id = `${n}${hand}`;
