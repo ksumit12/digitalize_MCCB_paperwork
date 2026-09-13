@@ -13,16 +13,19 @@ import {
   storeImport,
   storeListFaults,
   storeListFrames,
+  storeListBreakers,
   storeListInstallers,
   storeListProjects,
   storeListStrings,
   storePutString,
+  storeSaveBreaker,
   storeSaveFrame,
+  storeChanges,
   storeSaveInstaller,
   storeSearchBreakers,
   storeStatus,
 } from "@/lib/serverStore";
-import type { Fault, Frame, Installer, Project } from "@/lib/types";
+import type { BreakerRow, Fault, Frame, Installer, Project } from "@/lib/types";
 import type { StringRecord } from "@/lib/project";
 
 export const dynamic = "force-dynamic";
@@ -35,12 +38,16 @@ export async function GET(req: Request) {
     if (action === "status") return NextResponse.json(await storeStatus());
     if (action === "listProjects") return NextResponse.json(await storeListProjects());
     if (action === "listFrames") return NextResponse.json(await storeListFrames(projectId));
+    if (action === "listBreakers") return NextResponse.json(await storeListBreakers(projectId));
     if (action === "listStrings") return NextResponse.json(await storeListStrings(projectId));
     if (action === "listFaults") return NextResponse.json(await storeListFaults(projectId));
     if (action === "listInstallers") return NextResponse.json(await storeListInstallers());
     if (action === "getFrame") {
       const frame = await storeGetFrame(url.searchParams.get("id") || "");
       return NextResponse.json(frame ?? null);
+    }
+    if (action === "changes") {
+      return NextResponse.json(await storeChanges(url.searchParams.get("since") || ""));
     }
     if (action === "searchBreakers") {
       const q = url.searchParams.get("q") || "";
@@ -57,6 +64,10 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const action = String(body.action || "");
+    if (action === "saveBreaker") {
+      const result = await storeSaveBreaker(body.breaker as BreakerRow);
+      return NextResponse.json(result, { status: result.ok ? 200 : 409 });
+    }
     if (action === "saveFrame") {
       await storeSaveFrame(body.frame as Frame);
       return NextResponse.json({ ok: true });

@@ -46,9 +46,10 @@ export type BreakerPosition = {
   torqueLoadSideConfirmed: boolean;
   micrologicSettingAmps: AmpSetting;
   micrologicSettingConfirmed: boolean;
-  mccbScannedBy?: string;
-  mccbScannedAt?: string;
-};
+    mccbScannedBy?: string;
+    mccbScannedAt?: string;
+    rev?: number;
+  };
 
 export type Cbsds = {
   label: CbsdsLabel;
@@ -238,4 +239,5 @@ export type BreakerRow = {
   torqueLoad: number;
   mlSet: number;
   updatedAt: string;
+  rev?: number;
 };

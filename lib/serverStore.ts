@@ -126,7 +126,7 @@ async function sqliteDriver(): Promise<Driver> {
 }
 
 async function postgresDriver(url: string): Promise<Driver> {
-  pg = postgres(url, { max: 1, ssl: "require", idle_timeout: 20, connect_timeout: 10 });
+  pg = postgres(url, { max: 4, ssl: "require", idle_timeout: 20, connect_timeout: 10 });
   return {
     async exec(sql) {
       await pg!.unsafe(sql);
@@ -152,6 +152,21 @@ async function getDriver(): Promise<Driver> {
     }
     driverPromise = (url ? postgresDriver(url) : sqliteDriver()).then(async (d) => {
       await d.exec(SCHEMA);
+      try {
+        await d.exec("ALTER TABLE breakers ADD COLUMN rev INTEGER NOT NULL DEFAULT 0");
+      } catch {
+        /* already present */
+      }
+      try {
+        await d.exec("CREATE INDEX IF NOT EXISTS breakers_updated_at ON breakers (updated_at)");
+      } catch {
+        /* ignore */
+      }
+      try {
+        await d.exec("CREATE INDEX IF NOT EXISTS frames_updated_at ON frames (updated_at)");
+      } catch {
+        /* ignore */
+      }
       const projects = await d.all("SELECT id FROM projects LIMIT 1");
       if (!projects.length) {
         await d.run("INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)", [
@@ -222,6 +237,7 @@ function rowToBreaker(r: Row): BreakerRow {
     torqueLoad: num(r.torque_load),
     mlSet: num(r.ml_set),
     updatedAt: str(r.updated_at),
+    rev: num(r.rev),
   };
 }
 
@@ -289,6 +305,12 @@ export async function storeListFrames(projectId: string): Promise<Frame[]> {
   return frames;
 }
 
+export async function storeListBreakers(projectId: string): Promise<BreakerRow[]> {
+  const d = await getDriver();
+  const rows = await d.all("SELECT * FROM breakers WHERE project_id = ?", [projectId]);
+  return rows.map(rowToBreaker);
+}
+
 export async function storeGetFrame(id: string): Promise<Frame | undefined> {
   const d = await getDriver();
   const row = await d.get("SELECT * FROM frames WHERE id = ?", [id]);
@@ -303,7 +325,6 @@ export async function storeSaveFrame(frame: Frame): Promise<void> {
     projectId: frame.projectId || DEFAULT_PROJECT_ID,
     updatedAt: frame.updatedAt || new Date().toISOString(),
   });
-  const breakers = explodeBreakers(next);
   await d.run(
     `INSERT INTO frames (id, project_id, string_key, frame_slot, phase, submitted, updated_at, paperwork)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -326,22 +347,83 @@ export async function storeSaveFrame(frame: Frame): Promise<void> {
       JSON.stringify(next),
     ],
   );
-  await d.run("DELETE FROM breakers WHERE frame_id = ?", [next.id]);
-  if (!breakers.length) return;
-  const placeholders = breakers.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
-  const params = breakers.flatMap((b) => [
-    b.id, b.projectId, b.frameId, b.stringKey, b.frameSlot, b.hole, b.board, b.position, b.inUse, b.amps,
-    b.mccbSerial, b.mlSerial, b.mlModel, b.shuntBatch, b.scannedBy, b.scannedAt,
-    b.mccbInstalled, b.flexibarCaps, b.whipTerminated, b.torqueLine, b.torqueLoad, b.mlSet, b.updatedAt,
-  ]);
+  const existing = await d.get("SELECT id FROM breakers WHERE frame_id = ?", [next.id]);
+  if (existing) return;
+  const breakers = explodeBreakers(next);
+  for (const b of breakers) await upsertBreaker(d, { ...b, rev: 0 });
+}
+
+async function upsertBreaker(d: Driver, b: BreakerRow): Promise<void> {
+  const rev = b.rev ?? 0;
   await d.run(
     `INSERT INTO breakers (
       id, project_id, frame_id, string_key, frame_slot, hole, board, position, in_use, amps,
       mccb_serial, ml_serial, ml_model, shunt_batch, scanned_by, scanned_at,
-      mccb_installed, flexibar_caps, whip_terminated, torque_line, torque_load, ml_set, updated_at
-    ) VALUES ${placeholders}`,
-    params,
+      mccb_installed, flexibar_caps, whip_terminated, torque_line, torque_load, ml_set, updated_at, rev
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       project_id = excluded.project_id,
+       frame_id = excluded.frame_id,
+       string_key = excluded.string_key,
+       frame_slot = excluded.frame_slot,
+       hole = excluded.hole,
+       board = excluded.board,
+       position = excluded.position,
+       in_use = excluded.in_use,
+       amps = excluded.amps,
+       mccb_serial = excluded.mccb_serial,
+       ml_serial = excluded.ml_serial,
+       ml_model = excluded.ml_model,
+       shunt_batch = excluded.shunt_batch,
+       scanned_by = excluded.scanned_by,
+       scanned_at = excluded.scanned_at,
+       mccb_installed = excluded.mccb_installed,
+       flexibar_caps = excluded.flexibar_caps,
+       whip_terminated = excluded.whip_terminated,
+       torque_line = excluded.torque_line,
+       torque_load = excluded.torque_load,
+       ml_set = excluded.ml_set,
+       updated_at = excluded.updated_at,
+       rev = excluded.rev`,
+    [
+      b.id, b.projectId, b.frameId, b.stringKey, b.frameSlot, b.hole, b.board, b.position, b.inUse, b.amps,
+      b.mccbSerial, b.mlSerial, b.mlModel, b.shuntBatch, b.scannedBy, b.scannedAt,
+      b.mccbInstalled, b.flexibarCaps, b.whipTerminated, b.torqueLine, b.torqueLoad, b.mlSet, b.updatedAt, rev,
+    ],
   );
+}
+
+export async function storeSaveBreaker(
+  incoming: BreakerRow,
+): Promise<{ ok: true; breaker: BreakerRow } | { ok: false; conflict: BreakerRow }> {
+  const d = await getDriver();
+  const now = new Date().toISOString();
+  const current = await d.get("SELECT * FROM breakers WHERE id = ?", [incoming.id]);
+  const clientRev = incoming.rev ?? 0;
+  if (current && num(current.rev) > clientRev) {
+    return { ok: false, conflict: rowToBreaker(current) };
+  }
+  const nextRev = (current ? num(current.rev) : 0) + 1;
+  const row: BreakerRow = { ...incoming, updatedAt: now, rev: nextRev };
+  await upsertBreaker(d, row);
+  return { ok: true, breaker: row };
+}
+
+export async function storeChanges(since: string): Promise<{
+  cursor: string;
+  breakers: BreakerRow[];
+  frames: Frame[];
+}> {
+  const d = await getDriver();
+  const cursor = new Date().toISOString();
+  if (!since) return { cursor, breakers: [], frames: [] };
+  const breakerRows = await d.all("SELECT * FROM breakers WHERE updated_at >= ? ORDER BY updated_at", [since]);
+  const frameRows = await d.all("SELECT * FROM frames WHERE updated_at >= ? ORDER BY updated_at", [since]);
+  return {
+    cursor,
+    breakers: breakerRows.map(rowToBreaker),
+    frames: frameRows.map((row) => paperworkFrame(row)),
+  };
 }
 
 export async function storeDeleteFrame(id: string): Promise<void> {

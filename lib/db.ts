@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import {
+  breakerFingerprint,
   explodeBreakers,
   hydrateFrame,
   withFrameDefaults,
@@ -139,8 +140,27 @@ async function apiPost(body: Record<string, unknown>): Promise<boolean> {
   }
 }
 
+async function apiPostJson<T>(body: Record<string, unknown>): Promise<{
+  ok: boolean;
+  status: number;
+  data: T | null;
+}> {
+  try {
+    const res = await fetch("/api/data", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json()) as T;
+    return { ok: res.ok, status: res.status, data };
+  } catch {
+    return { ok: false, status: 0, data: null };
+  }
+}
+
 type Outbox = {
   frames: string[];
+  breakers: string[];
   deletedFrames: string[];
   strings: StringRecord[];
   deletedStrings: { projectId: string; key: string }[];
@@ -151,11 +171,13 @@ type Outbox = {
 };
 
 const OUTBOX_KEY = "mccb-outbox";
+const CURSOR_KEY = "mccb-changes-cursor";
 const SYNC_EVENT = "mccb-sync";
 
 function emptyOutbox(): Outbox {
   return {
     frames: [],
+    breakers: [],
     deletedFrames: [],
     strings: [],
     deletedStrings: [],
@@ -184,6 +206,13 @@ function queueFrame(id: string) {
   const box = readOutbox();
   if (!box.frames.includes(id)) box.frames.push(id);
   box.deletedFrames = box.deletedFrames.filter((x) => x !== id);
+  writeOutbox(box);
+  scheduleFlush();
+}
+
+function queueBreaker(id: string) {
+  const box = readOutbox();
+  if (!box.breakers.includes(id)) box.breakers.push(id);
   writeOutbox(box);
   scheduleFlush();
 }
@@ -257,7 +286,7 @@ function scheduleFlush() {
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = setTimeout(() => {
     void flushOutbox();
-  }, 400);
+  }, 150);
 }
 
 function notifySync() {
@@ -269,6 +298,17 @@ async function flushOutbox() {
   flushing = true;
   try {
     const box = readOutbox();
+    const hadWork =
+      box.frames.length +
+        box.breakers.length +
+        box.deletedFrames.length +
+        box.strings.length +
+        box.deletedStrings.length +
+        box.projects.length +
+        box.deletedProjects.length +
+        box.faults.length +
+        box.installers.length >
+      0;
     const next = emptyOutbox();
     for (const id of box.deletedFrames) {
       if (!(await apiPost({ action: "deleteFrame", id }))) next.deletedFrames.push(id);
@@ -277,6 +317,22 @@ async function flushOutbox() {
       const frame = await db.frames.get(id);
       if (!frame) continue;
       if (!(await apiPost({ action: "saveFrame", frame }))) next.frames.push(id);
+    }
+    for (const id of box.breakers) {
+      const breaker = await db.breakers.get(id);
+      if (!breaker) continue;
+      const result = await apiPostJson<
+        { ok: true; breaker: BreakerRow } | { ok: false; conflict: BreakerRow }
+      >({ action: "saveBreaker", breaker });
+      if (result.status === 409 && result.data && "conflict" in result.data && result.data.conflict) {
+        await db.breakers.put(result.data.conflict);
+        continue;
+      }
+      if (!result.ok || !result.data || !("breaker" in result.data) || !result.data.breaker) {
+        next.breakers.push(id);
+        continue;
+      }
+      await db.breakers.put(result.data.breaker);
     }
     for (const row of box.deletedStrings) {
       if (!(await apiPost({ action: "deleteString", projectId: row.projectId, key: row.key }))) {
@@ -299,6 +355,7 @@ async function flushOutbox() {
       if (!(await apiPost({ action: "saveInstaller", installer }))) next.installers.push(installer);
     }
     writeOutbox(next);
+    if (hadWork) notifySync();
   } finally {
     flushing = false;
   }
@@ -307,10 +364,16 @@ async function flushOutbox() {
 async function putLocalFrame(frame: Frame) {
   const next = withFrameDefaults(frame);
   const rows = explodeBreakers(next);
+  const dirtyHoles = new Set(readOutbox().breakers);
   await db.transaction("rw", db.frames, db.breakers, async () => {
     await db.frames.put(next);
-    await db.breakers.where("frameId").equals(next.id).delete();
-    if (rows.length) await db.breakers.bulkPut(rows);
+    for (const row of rows) {
+      if (dirtyHoles.has(row.id)) continue;
+      const local = await db.breakers.get(row.id);
+      if (!local || (row.rev ?? 0) >= (local.rev ?? 0)) {
+        await db.breakers.put(row);
+      }
+    }
   });
 }
 
@@ -340,6 +403,83 @@ function projectIdOf(frame: Frame) {
 
 function newer(a?: string, b?: string) {
   return Date.parse(a || "") > Date.parse(b || "");
+}
+
+async function applyRemoteBreaker(row: BreakerRow): Promise<boolean> {
+  const dirtyHoles = new Set(readOutbox().breakers);
+  if (dirtyHoles.has(row.id)) return false;
+  const local = await db.breakers.get(row.id);
+  if (local && (local.rev ?? 0) > (row.rev ?? 0)) return false;
+  if (local && (local.rev ?? 0) === (row.rev ?? 0) && breakerFingerprint(local) === breakerFingerprint(row)) {
+    return false;
+  }
+  await db.breakers.put(row);
+  return true;
+}
+
+async function pullChanges(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const since = localStorage.getItem(CURSOR_KEY) || "";
+  if (!since) return false;
+  const data = await apiGet<{ cursor: string; breakers: BreakerRow[]; frames: Frame[] }>("changes", { since });
+  if (!data) return false;
+  let changed = false;
+  const box = readOutbox();
+  const dirtyFrames = new Set(box.frames);
+  for (const frame of data.frames) {
+    if (dirtyFrames.has(frame.id) || box.deletedFrames.includes(frame.id)) continue;
+    const local = await db.frames.get(frame.id);
+    if (!local || newer(frame.updatedAt, local.updatedAt)) {
+      await db.frames.put(withFrameDefaults({ ...local, ...frame, cbsds: local?.cbsds || frame.cbsds }));
+      changed = true;
+    }
+  }
+  for (const row of data.breakers) {
+    if (await applyRemoteBreaker(row)) changed = true;
+  }
+  localStorage.setItem(CURSOR_KEY, data.cursor);
+  return changed;
+}
+
+async function refreshCursor() {
+  const data = await apiGet<{ cursor: string }>("changes", { since: "" });
+  if (data?.cursor && typeof window !== "undefined") {
+    localStorage.setItem(CURSOR_KEY, data.cursor);
+  }
+}
+
+export function startBackgroundSync() {
+  if (syncStarted || typeof window === "undefined") return;
+  syncStarted = true;
+  let lastFullPull = 0;
+  const tick = async (forceFull = false) => {
+    await flushOutbox();
+    const now = Date.now();
+    let changed = false;
+    if (forceFull || now - lastFullPull > 30_000) {
+      changed = await pullRemote();
+      await refreshCursor();
+      lastFullPull = now;
+    } else {
+      changed = await pullChanges();
+    }
+    if (changed) notifySync();
+  };
+  void (async () => {
+    await seedIfEmpty();
+    await tick(true);
+  })();
+  window.setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    void tick();
+  }, 1000);
+  window.addEventListener("focus", () => {
+    void tick();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    void tick();
+  });
 }
 
 async function pullRemote(): Promise<boolean> {
@@ -426,10 +566,10 @@ async function pullRemote(): Promise<boolean> {
     if (frames) {
       const remoteIds = new Set(frames.map((f) => f.id));
       for (const remote of frames) {
-        if (dirty.has(remote.id) || box.deletedFrames.includes(remote.id)) continue;
+        if (box.deletedFrames.includes(remote.id)) continue;
         const local = await db.frames.get(remote.id);
-        if (!local || newer(remote.updatedAt, local.updatedAt)) {
-          await putLocalFrame(remote);
+        if (!dirty.has(remote.id) && (!local || newer(remote.updatedAt, local.updatedAt))) {
+          await db.frames.put(withFrameDefaults({ ...local, ...remote, cbsds: local?.cbsds || remote.cbsds }));
           changed = true;
         }
       }
@@ -443,6 +583,13 @@ async function pullRemote(): Promise<boolean> {
           await db.faults.where("frameId").equals(local.id).delete();
         });
         changed = true;
+      }
+    }
+
+    const breakers = await apiGet<BreakerRow[]>("listBreakers", { projectId: pid });
+    if (breakers) {
+      for (const row of breakers) {
+        if (await applyRemoteBreaker(row)) changed = true;
       }
     }
 
@@ -486,31 +633,6 @@ async function seedIfEmpty() {
   await apiPost({ action: "import", projects, strings, frames, faults, installers });
 }
 
-export function startBackgroundSync() {
-  if (syncStarted || typeof window === "undefined") return;
-  syncStarted = true;
-  const tick = async () => {
-    await flushOutbox();
-    await pullRemote();
-    notifySync();
-  };
-  void (async () => {
-    await seedIfEmpty();
-    await tick();
-  })();
-  window.setInterval(() => {
-    if (document.visibilityState !== "visible") return;
-    void tick();
-  }, 4000);
-  window.addEventListener("focus", () => {
-    void tick();
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible") return;
-    void tick();
-  });
-}
-
 export function onSharedSync(handler: () => void) {
   if (typeof window === "undefined") return () => {};
   startBackgroundSync();
@@ -548,17 +670,30 @@ export async function getFrame(id: string): Promise<Frame | undefined> {
 }
 
 export async function saveFrame(frame: Frame): Promise<void> {
+  const now = new Date().toISOString();
   const next: Frame = {
     ...frame,
     projectId: frame.projectId || currentProjectId(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   };
-  const rows = explodeBreakers(next);
+  const incoming = explodeBreakers(next);
+  const dirtyIds: string[] = [];
   await db.transaction("rw", db.frames, db.breakers, async () => {
     await db.frames.put(next);
-    if (rows.length) await db.breakers.bulkPut(rows);
+    for (const row of incoming) {
+      const local = await db.breakers.get(row.id);
+      if (!local) {
+        await db.breakers.put({ ...row, rev: 0, updatedAt: now });
+        continue;
+      }
+      if (breakerFingerprint(local) === breakerFingerprint(row)) continue;
+      const updated = { ...row, rev: local.rev ?? 0, updatedAt: now };
+      await db.breakers.put(updated);
+      dirtyIds.push(updated.id);
+    }
   });
   queueFrame(next.id);
+  for (const id of dirtyIds) queueBreaker(id);
 }
 
 export async function deleteFrame(id: string): Promise<void> {

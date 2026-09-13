@@ -57,6 +57,7 @@ export function explodeBreakers(frame: Frame): BreakerRow[] {
         torqueLoad: b.torqueLoadSideConfirmed ? 1 : 0,
         mlSet: b.micrologicSettingConfirmed ? 1 : 0,
         updatedAt,
+        rev: b.rev ?? 0,
       });
     }
   }
@@ -80,7 +81,27 @@ export function applyBreakerRow(b: BreakerPosition, row: BreakerRow): BreakerPos
     torqueLineSideConfirmed: Boolean(row.torqueLine),
     torqueLoadSideConfirmed: Boolean(row.torqueLoad),
     micrologicSettingConfirmed: Boolean(row.mlSet),
+    rev: row.rev,
   };
+}
+
+export function breakerFingerprint(row: BreakerRow): string {
+  return [
+    row.inUse,
+    row.amps,
+    row.mccbSerial,
+    row.mlSerial,
+    row.mlModel,
+    row.shuntBatch,
+    row.scannedBy,
+    row.scannedAt,
+    row.mccbInstalled,
+    row.flexibarCaps,
+    row.whipTerminated,
+    row.torqueLine,
+    row.torqueLoad,
+    row.mlSet,
+  ].join("\t");
 }
 
 export function hydrateFrame(frame: Frame, rows: BreakerRow[]): Frame {

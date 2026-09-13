@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getFrame, saveFrame } from "./db";
+import { getFrame, onSharedSync, saveFrame } from "./db";
 import type { Frame } from "./types";
 
 export function useFrame(id: string) {
@@ -25,10 +25,22 @@ export function useFrame(id: string) {
     };
   }, [id]);
 
+  useEffect(() => {
+    return onSharedSync(() => {
+      if (timer.current) return;
+      void getFrame(id).then((found) => {
+        if (!found) return;
+        setFrame(found);
+        latest.current = found;
+      });
+    });
+  }, [id]);
+
   const persist = useCallback((next: Frame) => {
     latest.current = next;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
+      timer.current = null;
       saveFrame(next).then(() => setSavedAt(new Date().toLocaleTimeString()));
     }, 250);
   }, []);
