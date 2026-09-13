@@ -18,6 +18,7 @@ import {
   storeListProjects,
   storeListStrings,
   storePutString,
+  storeSaveBatch,
   storeSaveBreaker,
   storeSaveFrame,
   storeChanges,
@@ -49,7 +50,12 @@ export async function GET(req: Request) {
     }
     if (action === "cursor") return NextResponse.json(await storeCursor());
     if (action === "changes") {
-      return NextResponse.json(await storeChanges(Number(url.searchParams.get("since") ?? -1)));
+      return NextResponse.json(
+        await storeChanges(
+          Number(url.searchParams.get("since") ?? -1),
+          url.searchParams.get("origin") || undefined,
+        ),
+      );
     }
     if (action === "searchBreakers") {
       const q = url.searchParams.get("q") || "";
@@ -66,16 +72,25 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const action = String(body.action || "");
+    const origin = body.origin ? String(body.origin) : undefined;
+    if (action === "saveBatch") {
+      const result = await storeSaveBatch({
+        frames: (body.frames as Frame[]) || [],
+        breakers: (body.breakers as BreakerRow[]) || [],
+        origin,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
     if (action === "saveBreaker") {
-      const result = await storeSaveBreaker(body.breaker as BreakerRow);
+      const result = await storeSaveBreaker(body.breaker as BreakerRow, origin);
       return NextResponse.json(result, { status: result.ok ? 200 : 409 });
     }
     if (action === "saveFrame") {
-      const frame = await storeSaveFrame(body.frame as Frame);
+      const frame = await storeSaveFrame(body.frame as Frame, origin);
       return NextResponse.json({ ok: true, frame });
     }
     if (action === "deleteFrame") {
-      await storeDeleteFrame(String(body.id || ""));
+      await storeDeleteFrame(String(body.id || ""), origin);
       return NextResponse.json({ ok: true });
     }
     if (action === "putProject") {
@@ -91,11 +106,15 @@ export async function POST(req: Request) {
       return NextResponse.json(result);
     }
     if (action === "putString") {
-      await storePutString(body.string as StringRecord);
+      await storePutString(body.string as StringRecord, origin);
       return NextResponse.json({ ok: true });
     }
     if (action === "deleteString") {
-      await storeDeleteString(String(body.projectId || DEFAULT_PROJECT_ID), String(body.key || ""));
+      await storeDeleteString(
+        String(body.projectId || DEFAULT_PROJECT_ID),
+        String(body.key || ""),
+        origin,
+      );
       return NextResponse.json({ ok: true });
     }
     if (action === "saveInstaller") {

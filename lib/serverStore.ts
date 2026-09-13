@@ -76,9 +76,18 @@ CREATE TABLE IF NOT EXISTS sync_seq (
   id INTEGER PRIMARY KEY,
   value BIGINT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS schema_meta (
+  id INTEGER PRIMARY KEY,
+  version INTEGER NOT NULL
+);
 `;
 
 const SEQ_TABLES = ["frames", "breakers", "strings", "faults"] as const;
+
+// Bump this when the migration below changes. A serverless instance reads the
+// stored version in one round trip and skips the whole migration when it
+// matches, instead of re-running twenty DDL statements on every cold start.
+const SCHEMA_VERSION = 3;
 
 type Row = Record<string, unknown>;
 
@@ -157,56 +166,81 @@ async function getDriver(): Promise<Driver> {
       throw new Error("DATABASE_URL is not set. Add a Neon/Postgres database on Vercel.");
     }
     driverPromise = (url ? postgresDriver(url) : sqliteDriver()).then(async (d) => {
-      await d.exec(SCHEMA);
-      try {
-        await d.exec("ALTER TABLE breakers ADD COLUMN rev INTEGER NOT NULL DEFAULT 0");
-      } catch {
-        /* already present */
-      }
-      try {
-        await d.exec("CREATE INDEX IF NOT EXISTS breakers_updated_at ON breakers (updated_at)");
-      } catch {
-        /* ignore */
-      }
-      try {
-        await d.exec("CREATE INDEX IF NOT EXISTS frames_updated_at ON frames (updated_at)");
-      } catch {
-        /* ignore */
-      }
-      for (const table of SEQ_TABLES) {
-        try {
-          await d.exec(`ALTER TABLE ${table} ADD COLUMN seq BIGINT NOT NULL DEFAULT 0`);
-        } catch {
-          /* already present */
-        }
-        try {
-          await d.exec(`CREATE INDEX IF NOT EXISTS ${table}_seq ON ${table} (seq)`);
-        } catch {
-          /* ignore */
-        }
-      }
-      await d.run("INSERT INTO sync_seq (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING", []);
-      const projects = await d.all("SELECT id FROM projects LIMIT 1");
-      if (!projects.length) {
-        await d.run("INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)", [
-          DEFAULT_PROJECT_ID,
-          "Current project",
-          new Date().toISOString(),
-        ]);
-      } else {
-        const named = await d.all("SELECT id FROM projects WHERE id != ?", [DEFAULT_PROJECT_ID]);
-        if (named.length) {
-          const leftover = await d.all("SELECT id FROM frames WHERE project_id = ?", [DEFAULT_PROJECT_ID]);
-          if (!leftover.length) {
-            await d.run("DELETE FROM strings WHERE project_id = ?", [DEFAULT_PROJECT_ID]);
-            await d.run("DELETE FROM projects WHERE id = ? AND name = ?", [DEFAULT_PROJECT_ID, "Current project"]);
-          }
-        }
-      }
+      if ((await readSchemaVersion(d)) < SCHEMA_VERSION) await migrate(d);
       return d;
     });
   }
   return driverPromise;
+}
+
+/** Absent table means this database has never been migrated. */
+async function readSchemaVersion(d: Driver): Promise<number> {
+  try {
+    return num((await d.get("SELECT version FROM schema_meta WHERE id = 1"))?.version);
+  } catch {
+    return 0;
+  }
+}
+
+async function migrate(d: Driver): Promise<void> {
+  await d.exec(SCHEMA);
+  const addColumn = async (table: string, decl: string) => {
+    try {
+      await d.exec(`ALTER TABLE ${table} ADD COLUMN ${decl}`);
+    } catch {
+      /* already present */
+    }
+  };
+  const addIndex = async (name: string, on: string) => {
+    try {
+      await d.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${on}`);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  await addColumn("breakers", "rev INTEGER NOT NULL DEFAULT 0");
+  await addIndex("breakers_updated_at", "breakers (updated_at)");
+  await addIndex("frames_updated_at", "frames (updated_at)");
+  for (const table of SEQ_TABLES) {
+    await addColumn(table, "seq BIGINT NOT NULL DEFAULT 0");
+    // Which device wrote the row, so the feed can skip echoing it back.
+    await addColumn(table, "origin TEXT");
+    await addIndex(`${table}_seq`, `${table} (seq)`);
+  }
+  // Deletions travel through the change feed as tombstones, so devices no
+  // longer need a periodic full download just to notice something vanished.
+  await addColumn("frames", "deleted INTEGER NOT NULL DEFAULT 0");
+  await addColumn("strings", "deleted INTEGER NOT NULL DEFAULT 0");
+
+  await d.run("INSERT INTO sync_seq (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING", []);
+  const projects = await d.all("SELECT id FROM projects LIMIT 1");
+  if (!projects.length) {
+    await d.run("INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)", [
+      DEFAULT_PROJECT_ID,
+      "Current project",
+      new Date().toISOString(),
+    ]);
+  }
+  await d.run(
+    `INSERT INTO schema_meta (id, version) VALUES (1, ?)
+     ON CONFLICT (id) DO UPDATE SET version = excluded.version`,
+    [SCHEMA_VERSION],
+  );
+}
+
+/**
+ * The seeded placeholder only stops being useful once a real project exists,
+ * which is the one moment worth checking. It used to be re-checked on every
+ * cold start, which cost round trips on the write path for nothing.
+ */
+async function pruneSeededProject(d: Driver): Promise<void> {
+  const leftover = await d.all("SELECT id FROM frames WHERE project_id = ? AND deleted = 0", [
+    DEFAULT_PROJECT_ID,
+  ]);
+  if (leftover.length) return;
+  await d.run("DELETE FROM strings WHERE project_id = ?", [DEFAULT_PROJECT_ID]);
+  await d.run("DELETE FROM projects WHERE id = ? AND name = ?", [DEFAULT_PROJECT_ID, "Current project"]);
 }
 
 function str(v: unknown): string {
@@ -304,7 +338,7 @@ async function hydrateFromDb(d: Driver, frame: Frame): Promise<Frame> {
 
 export async function storeStatus(): Promise<{ empty: boolean; hosted: boolean }> {
   const d = await getDriver();
-  const frames = await d.get("SELECT id FROM frames LIMIT 1");
+  const frames = await d.get("SELECT id FROM frames WHERE deleted = 0 LIMIT 1");
   return { empty: !frames, hosted: Boolean(hostedUrl()) || Boolean(process.env.VERCEL) };
 }
 
@@ -330,6 +364,7 @@ export async function storeAddProject(name: string): Promise<Project> {
     createdAt: new Date().toISOString(),
   };
   await storePutProject(project);
+  if (project.id !== DEFAULT_PROJECT_ID) await pruneSeededProject(await getDriver());
   return project;
 }
 
@@ -353,7 +388,7 @@ export async function storeDeleteProject(id: string): Promise<{ ok: true } | { o
 export async function storeListFrames(projectId: string): Promise<Frame[]> {
   const d = await getDriver();
   const rows = await d.all(
-    "SELECT * FROM frames WHERE project_id = ? ORDER BY updated_at DESC",
+    "SELECT * FROM frames WHERE project_id = ? AND deleted = 0 ORDER BY updated_at DESC",
     [projectId],
   );
   const frames = [];
@@ -369,13 +404,16 @@ export async function storeListBreakers(projectId: string): Promise<BreakerRow[]
 
 export async function storeGetFrame(id: string): Promise<Frame | undefined> {
   const d = await getDriver();
-  const row = await d.get("SELECT * FROM frames WHERE id = ?", [id]);
+  const row = await d.get("SELECT * FROM frames WHERE id = ? AND deleted = 0", [id]);
   if (!row) return undefined;
   return hydrateFromDb(d, paperworkFrame(row));
 }
 
-export async function storeSaveFrame(frame: Frame): Promise<Frame> {
-  const d = await getDriver();
+export async function storeSaveFrame(frame: Frame, origin?: string): Promise<Frame> {
+  return saveFrameWith(await getDriver(), frame, origin);
+}
+
+async function saveFrameWith(d: Driver, frame: Frame, origin?: string): Promise<Frame> {
   const seq = await nextSeq(d);
   const next = withFrameDefaults({
     ...frame,
@@ -384,8 +422,8 @@ export async function storeSaveFrame(frame: Frame): Promise<Frame> {
     seq,
   });
   await d.run(
-    `INSERT INTO frames (id, project_id, string_key, frame_slot, phase, submitted, updated_at, paperwork, seq)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO frames (id, project_id, string_key, frame_slot, phase, submitted, updated_at, paperwork, seq, origin, deleted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
      ON CONFLICT (id) DO UPDATE SET
        project_id = excluded.project_id,
        string_key = excluded.string_key,
@@ -394,7 +432,9 @@ export async function storeSaveFrame(frame: Frame): Promise<Frame> {
        submitted = excluded.submitted,
        updated_at = excluded.updated_at,
        paperwork = excluded.paperwork,
-       seq = excluded.seq`,
+       seq = excluded.seq,
+       origin = excluded.origin,
+       deleted = 0`,
     [
       next.id,
       next.projectId,
@@ -405,24 +445,25 @@ export async function storeSaveFrame(frame: Frame): Promise<Frame> {
       next.updatedAt,
       JSON.stringify(next),
       seq,
+      origin ?? null,
     ],
   );
   const existing = await d.get("SELECT id FROM breakers WHERE frame_id = ?", [next.id]);
   if (existing) return next;
   for (const b of explodeBreakers(next)) {
-    await upsertBreaker(d, { ...b, rev: 0, seq: await nextSeq(d) });
+    await upsertBreaker(d, { ...b, rev: 0, seq: await nextSeq(d) }, origin);
   }
   return next;
 }
 
-async function upsertBreaker(d: Driver, b: BreakerRow): Promise<void> {
+async function upsertBreaker(d: Driver, b: BreakerRow, origin?: string): Promise<void> {
   const rev = b.rev ?? 0;
   await d.run(
     `INSERT INTO breakers (
       id, project_id, frame_id, string_key, frame_slot, hole, board, position, in_use, amps,
       mccb_serial, ml_serial, ml_model, shunt_batch, scanned_by, scanned_at,
-      mccb_installed, flexibar_caps, whip_terminated, torque_line, torque_load, ml_set, updated_at, rev, seq
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      mccb_installed, flexibar_caps, whip_terminated, torque_line, torque_load, ml_set, updated_at, rev, seq, origin
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        project_id = excluded.project_id,
        frame_id = excluded.frame_id,
@@ -447,20 +488,29 @@ async function upsertBreaker(d: Driver, b: BreakerRow): Promise<void> {
        ml_set = excluded.ml_set,
        updated_at = excluded.updated_at,
        rev = excluded.rev,
-       seq = excluded.seq`,
+       seq = excluded.seq,
+       origin = excluded.origin`,
     [
       b.id, b.projectId, b.frameId, b.stringKey, b.frameSlot, b.hole, b.board, b.position, b.inUse, b.amps,
       b.mccbSerial, b.mlSerial, b.mlModel, b.shuntBatch, b.scannedBy, b.scannedAt,
       b.mccbInstalled, b.flexibarCaps, b.whipTerminated, b.torqueLine, b.torqueLoad, b.mlSet, b.updatedAt, rev,
-      b.seq ?? 0,
+      b.seq ?? 0, origin ?? null,
     ],
   );
 }
 
 export async function storeSaveBreaker(
   incoming: BreakerRow,
+  origin?: string,
 ): Promise<{ ok: true; breaker: BreakerRow } | { ok: false; conflict: BreakerRow }> {
-  const d = await getDriver();
+  return saveBreakerWith(await getDriver(), incoming, origin);
+}
+
+async function saveBreakerWith(
+  d: Driver,
+  incoming: BreakerRow,
+  origin?: string,
+): Promise<{ ok: true; breaker: BreakerRow } | { ok: false; conflict: BreakerRow }> {
   const now = new Date().toISOString();
   const current = await d.get("SELECT * FROM breakers WHERE id = ?", [incoming.id]);
   const clientRev = incoming.rev ?? 0;
@@ -469,8 +519,41 @@ export async function storeSaveBreaker(
   }
   const nextRev = (current ? num(current.rev) : 0) + 1;
   const row: BreakerRow = { ...incoming, updatedAt: now, rev: nextRev, seq: await nextSeq(d) };
-  await upsertBreaker(d, row);
+  await upsertBreaker(d, row, origin);
   return { ok: true, breaker: row };
+}
+
+export type BatchInput = {
+  frames?: Frame[];
+  breakers?: BreakerRow[];
+  origin?: string;
+};
+
+export type BatchResult = {
+  frames: Frame[];
+  breakers: { id: string; ok: boolean; row: BreakerRow }[];
+};
+
+/**
+ * One request for a whole queue. The client used to send a separate HTTP
+ * request per hole, so a 70-hole frame paid the network round trip 70 times.
+ */
+export async function storeSaveBatch(input: BatchInput): Promise<BatchResult> {
+  const d = await getDriver();
+  const frames: Frame[] = [];
+  for (const frame of input.frames ?? []) {
+    frames.push(await saveFrameWith(d, frame, input.origin));
+  }
+  const breakers: BatchResult["breakers"] = [];
+  for (const breaker of input.breakers ?? []) {
+    const result = await saveBreakerWith(d, breaker, input.origin);
+    breakers.push(
+      result.ok
+        ? { id: breaker.id, ok: true, row: result.breaker }
+        : { id: breaker.id, ok: false, row: result.conflict },
+    );
+  }
+  return { frames, breakers };
 }
 
 export type ChangeFeed = {
@@ -479,6 +562,8 @@ export type ChangeFeed = {
   breakers: BreakerRow[];
   strings: StringRecord[];
   faults: Fault[];
+  deletedFrames: string[];
+  deletedStrings: string[];
 };
 
 const CHANGE_PAGE = 400;
@@ -495,15 +580,29 @@ export async function storeCursor(): Promise<{ cursor: number; now: string; host
   };
 }
 
-export async function storeChanges(since: number): Promise<ChangeFeed> {
+export async function storeChanges(since: number, origin?: string): Promise<ChangeFeed> {
   const d = await getDriver();
   let cursor = await currentSeq(d);
-  if (!Number.isFinite(since) || since < 0) {
-    return { cursor, frames: [], breakers: [], strings: [], faults: [] };
-  }
+  const empty: ChangeFeed = {
+    cursor,
+    frames: [],
+    breakers: [],
+    strings: [],
+    faults: [],
+    deletedFrames: [],
+    deletedStrings: [],
+  };
+  if (!Number.isFinite(since) || since < 0) return empty;
 
+  // A device already has its own writes, and the POST reply gave it the
+  // canonical row, so shipping them back is pure waste.
+  const skipOwn = origin ? " AND (origin IS NULL OR origin <> ?)" : "";
+  const args = origin ? [since, origin] : [since];
   const page = async (table: string) =>
-    d.all(`SELECT * FROM ${table} WHERE seq > ? ORDER BY seq LIMIT ${CHANGE_PAGE}`, [since]);
+    d.all(
+      `SELECT * FROM ${table} WHERE seq > ?${skipOwn} ORDER BY seq LIMIT ${CHANGE_PAGE}`,
+      args,
+    );
 
   const [frameRows, breakerRows, stringRows, faultRows] = await Promise.all([
     page("frames"),
@@ -518,11 +617,14 @@ export async function storeChanges(since: number): Promise<ChangeFeed> {
     if (rows.length === CHANGE_PAGE) cursor = Math.min(cursor, num(rows[rows.length - 1].seq));
   }
 
+  const liveFrames = frameRows.filter((r) => num(r.deleted) !== 1);
+  const liveStrings = stringRows.filter((r) => num(r.deleted) !== 1);
+
   return {
     cursor,
-    frames: frameRows.map(paperworkFrame),
+    frames: liveFrames.map(paperworkFrame),
     breakers: breakerRows.map(rowToBreaker),
-    strings: stringRows.map((r) => ({
+    strings: liveStrings.map((r) => ({
       id: str(r.id),
       projectId: str(r.project_id),
       key: str(r.key),
@@ -530,19 +632,33 @@ export async function storeChanges(since: number): Promise<ChangeFeed> {
       archivedAt: str(r.archived_at) || undefined,
     })),
     faults: faultRows.map(rowToFault),
+    deletedFrames: frameRows.filter((r) => num(r.deleted) === 1).map((r) => str(r.id)),
+    deletedStrings: stringRows.filter((r) => num(r.deleted) === 1).map((r) => str(r.id)),
   };
 }
 
-export async function storeDeleteFrame(id: string): Promise<void> {
-  const d = await getDriver();
+export async function storeDeleteFrame(id: string, origin?: string): Promise<void> {
+  await deleteFrameWith(await getDriver(), id, origin);
+}
+
+// Tombstoned rather than removed: the row keeps a fresh seq so the deletion
+// reaches other devices through the ordinary feed within a second.
+async function deleteFrameWith(d: Driver, id: string, origin?: string): Promise<void> {
   await d.run("DELETE FROM breakers WHERE frame_id = ?", [id]);
   await d.run("DELETE FROM faults WHERE frame_id = ?", [id]);
-  await d.run("DELETE FROM frames WHERE id = ?", [id]);
+  await d.run("UPDATE frames SET deleted = 1, seq = ?, origin = ? WHERE id = ?", [
+    await nextSeq(d),
+    origin ?? null,
+    id,
+  ]);
 }
 
 export async function storeListStrings(projectId: string): Promise<StringRun[]> {
   const d = await getDriver();
-  const rows = await d.all("SELECT key, created_at, archived_at FROM strings WHERE project_id = ?", [projectId]);
+  const rows = await d.all(
+    "SELECT key, created_at, archived_at FROM strings WHERE project_id = ? AND deleted = 0",
+    [projectId],
+  );
   return rows.map((r) => ({
     key: str(r.key),
     createdAt: str(r.created_at),
@@ -550,24 +666,32 @@ export async function storeListStrings(projectId: string): Promise<StringRun[]> 
   }));
 }
 
-export async function storePutString(row: StringRecord): Promise<void> {
+export async function storePutString(row: StringRecord, origin?: string): Promise<void> {
   const d = await getDriver();
   await d.run(
-    `INSERT INTO strings (id, project_id, key, created_at, archived_at, seq) VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO strings (id, project_id, key, created_at, archived_at, seq, origin, deleted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0)
      ON CONFLICT (id) DO UPDATE SET
        archived_at = excluded.archived_at,
        created_at = excluded.created_at,
-       seq = excluded.seq`,
-    [row.id, row.projectId, row.key, row.createdAt, row.archivedAt || null, await nextSeq(d)],
+       seq = excluded.seq,
+       origin = excluded.origin,
+       deleted = 0`,
+    [row.id, row.projectId, row.key, row.createdAt, row.archivedAt || null, await nextSeq(d), origin ?? null],
   );
 }
 
-export async function storeDeleteString(projectId: string, key: string): Promise<void> {
+export async function storeDeleteString(projectId: string, key: string, origin?: string): Promise<void> {
   const d = await getDriver();
   const frames = await storeListFrames(projectId);
   const ids = frames.filter((f) => (f.stringKey || "1") === key).map((f) => f.id);
-  for (const id of ids) await storeDeleteFrame(id);
-  await d.run("DELETE FROM strings WHERE project_id = ? AND key = ?", [projectId, key]);
+  for (const id of ids) await deleteFrameWith(d, id, origin);
+  await d.run("UPDATE strings SET deleted = 1, seq = ?, origin = ? WHERE project_id = ? AND key = ?", [
+    await nextSeq(d),
+    origin ?? null,
+    projectId,
+    key,
+  ]);
 }
 
 export async function storeFindFrameBySlot(
@@ -577,7 +701,7 @@ export async function storeFindFrameBySlot(
 ): Promise<Frame | undefined> {
   const d = await getDriver();
   const row = await d.get(
-    "SELECT * FROM frames WHERE project_id = ? AND string_key = ? AND frame_slot = ?",
+    "SELECT * FROM frames WHERE project_id = ? AND string_key = ? AND frame_slot = ? AND deleted = 0",
     [projectId, stringKey, frameSlot],
   );
   if (!row) return undefined;

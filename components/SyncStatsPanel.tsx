@@ -177,6 +177,11 @@ export function SyncStatsPanel() {
       />
       <Line label="Slowest so far" value={ms(up?.slowestWriteMs)} tone={latencyTone(up?.slowestWriteMs ?? null)} />
       <Line label="Last upload took" value={ms(up?.lastFlushMs)} />
+      <Line
+        label="Rows in last upload"
+        value={`${up?.lastBatchRows ?? 0} in 1 request`}
+        hint={`${up?.requests ?? 0} upload requests total`}
+      />
       <Line label="Last upload" value={ago(up?.lastAt ?? null)} />
       <Line
         label="Waiting in queue"

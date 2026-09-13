@@ -115,6 +115,22 @@ class FrameDb extends Dexie {
 
 export const db = new FrameDb();
 
+const DEVICE_KEY = "mccb-device-id";
+
+/**
+ * Stable per-browser id. The change feed uses it to skip rows this device
+ * wrote, which it already has, so a busy phone stops downloading its own work.
+ */
+function deviceId(): string {
+  if (typeof window === "undefined") return "";
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
+
 async function apiGet<T>(action: string, extra: Record<string, string> = {}): Promise<T | null> {
   try {
     const params = new URLSearchParams({ action, projectId: currentProjectId(), ...extra });
@@ -134,7 +150,7 @@ async function apiPost(body: Record<string, unknown>): Promise<boolean> {
     const res = await fetch("/api/data", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, origin: deviceId() }),
     });
     markReachable(res.ok);
     return res.ok;
@@ -153,7 +169,7 @@ async function apiPostJson<T>(body: Record<string, unknown>): Promise<{
     const res = await fetch("/api/data", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, origin: deviceId() }),
     });
     const data = (await res.json()) as T;
     // A 409 is the server correctly rejecting a stale hole, not a broken link.
@@ -188,6 +204,8 @@ type ChangeFeed = {
   breakers: BreakerRow[];
   strings: StringRecord[];
   faults: Fault[];
+  deletedFrames: string[];
+  deletedStrings: string[];
 };
 
 // The cursor is a server-assigned counter, not a timestamp. Older builds stored
@@ -473,6 +491,9 @@ export type SyncStats = {
     accepted: number;
     rejected: number;
     conflicts: number;
+    /** Rows in the last batch, against the one request that carried them. */
+    lastBatchRows: number;
+    requests: number;
     lastAt: number | null;
   };
   downstream: {
@@ -501,6 +522,8 @@ const stats: SyncStats = {
     accepted: 0,
     rejected: 0,
     conflicts: 0,
+    lastBatchRows: 0,
+    requests: 0,
     lastAt: null,
   },
   downstream: {
@@ -551,6 +574,8 @@ export function resetSyncStats() {
     accepted: 0,
     rejected: 0,
     conflicts: 0,
+    lastBatchRows: 0,
+    requests: 0,
     lastAt: null,
   };
   stats.downstream = {
@@ -610,46 +635,63 @@ async function flushOutbox() {
     for (const id of box.deletedFrames) {
       if (!(await apiPost({ action: "deleteFrame", id }))) next.deletedFrames.push(id);
     }
-    for (const id of box.frames) {
-      const frame = await db.frames.get(id);
-      if (!frame) continue;
-      const saved = await apiPostJson<{ ok: boolean; frame?: Frame }>({ action: "saveFrame", frame });
-      if (!saved.ok || !saved.data?.frame) {
-        next.frames.push(id);
-        stats.upstream.rejected += 1;
-        continue;
+    // Frames and holes go up together in one request. Sending them one at a
+    // time meant a 70-hole frame paid the network round trip 70 times over.
+    const frames = (await Promise.all(box.frames.map((id) => db.frames.get(id)))).filter(
+      (f): f is Frame => Boolean(f),
+    );
+    const breakers = (await Promise.all(box.breakers.map((id) => db.breakers.get(id)))).filter(
+      (b): b is BreakerRow => Boolean(b),
+    );
+    if (frames.length || breakers.length) {
+      stats.upstream.lastBatchRows = frames.length + breakers.length;
+      stats.upstream.requests += 1;
+      const batch = await apiPostJson<{
+        ok: boolean;
+        frames: Frame[];
+        breakers: { id: string; ok: boolean; row: BreakerRow }[];
+      }>({ action: "saveBatch", frames, breakers });
+
+      if (!batch.ok || !batch.data) {
+        next.frames.push(...box.frames);
+        next.breakers.push(...box.breakers);
+        stats.upstream.rejected += frames.length + breakers.length;
+      } else {
+        const savedFrames = new Map(batch.data.frames.map((f) => [f.id, f]));
+        for (const id of box.frames) {
+          const saved = savedFrames.get(id);
+          if (!saved) {
+            next.frames.push(id);
+            stats.upstream.rejected += 1;
+            continue;
+          }
+          markAccepted(`frame:${id}`);
+          // Adopt the server's seq and clock so the feed can tell later whether
+          // a remote edit is actually newer than what this device already has.
+          const current = await db.frames.get(id);
+          if (current) {
+            await db.frames.put({ ...current, seq: saved.seq, updatedAt: saved.updatedAt });
+          }
+        }
+
+        const results = new Map(batch.data.breakers.map((r) => [r.id, r]));
+        for (const id of box.breakers) {
+          const result = results.get(id);
+          if (!result) {
+            next.breakers.push(id);
+            stats.upstream.rejected += 1;
+            continue;
+          }
+          // A rejected hole still carries the server's winning row, so take it.
+          await db.breakers.put(result.row);
+          if (result.ok) {
+            markAccepted(`breaker:${id}`);
+          } else {
+            stats.upstream.conflicts += 1;
+            queuedAt.delete(`breaker:${id}`);
+          }
+        }
       }
-      markAccepted(`frame:${id}`);
-      // Adopt the server's seq and clock so the feed can tell later whether a
-      // remote edit is actually newer than what this device already has.
-      const current = await db.frames.get(id);
-      if (current) {
-        await db.frames.put({
-          ...current,
-          seq: saved.data.frame.seq,
-          updatedAt: saved.data.frame.updatedAt,
-        });
-      }
-    }
-    for (const id of box.breakers) {
-      const breaker = await db.breakers.get(id);
-      if (!breaker) continue;
-      const result = await apiPostJson<
-        { ok: true; breaker: BreakerRow } | { ok: false; conflict: BreakerRow }
-      >({ action: "saveBreaker", breaker });
-      if (result.status === 409 && result.data && "conflict" in result.data && result.data.conflict) {
-        await db.breakers.put(result.data.conflict);
-        stats.upstream.conflicts += 1;
-        queuedAt.delete(`breaker:${id}`);
-        continue;
-      }
-      if (!result.ok || !result.data || !("breaker" in result.data) || !result.data.breaker) {
-        next.breakers.push(id);
-        stats.upstream.rejected += 1;
-        continue;
-      }
-      await db.breakers.put(result.data.breaker);
-      markAccepted(`breaker:${id}`);
     }
     for (const row of box.deletedStrings) {
       if (!(await apiPost({ action: "deleteString", projectId: row.projectId, key: row.key }))) {
@@ -765,13 +807,18 @@ async function pullChanges(): Promise<boolean> {
     return false;
   }
   const pollStartedAt = Date.now();
-  const data = await apiGet<ChangeFeed>("changes", { since: String(since) });
+  const data = await apiGet<ChangeFeed>("changes", { since: String(since), origin: deviceId() });
   if (!data) return false;
 
   stats.downstream.polls += 1;
   stats.downstream.lastPollMs = Date.now() - pollStartedAt;
   stats.downstream.rowsLastPoll =
-    data.frames.length + data.breakers.length + data.strings.length + data.faults.length;
+    data.frames.length +
+    data.breakers.length +
+    data.strings.length +
+    data.faults.length +
+    data.deletedFrames.length +
+    data.deletedStrings.length;
   if (stats.downstream.rowsLastPoll === 0) stats.downstream.emptyPolls += 1;
   // Newest server stamp in this batch, so the lag reflects the freshest edit.
   const freshest = [...data.breakers, ...data.frames]
@@ -801,9 +848,35 @@ async function pullChanges(): Promise<boolean> {
     changed = true;
   }
 
+  // Deletions arrive as tombstones now, which is what lets this device drop the
+  // periodic full download it used to need just to notice a frame had gone.
+  for (const id of data.deletedFrames) {
+    if (dirtyFrames.has(id)) continue;
+    if (!(await db.frames.get(id))) continue;
+    await purgeLocalFrame(id);
+    changed = true;
+  }
+  for (const id of data.deletedStrings) {
+    if (!(await db.strings.get(id))) continue;
+    await db.strings.delete(id);
+    changed = true;
+  }
+
   if (data.cursor > since) writeCursor(data.cursor);
   return changed;
 }
+
+async function purgeLocalFrame(id: string) {
+  const holes = await db.breakers.where("frameId").equals(id).primaryKeys();
+  await db.transaction("rw", db.frames, db.breakers, async () => {
+    await db.breakers.bulkDelete(holes as string[]);
+    await db.frames.delete(id);
+  });
+  const seen = readSeenFrames();
+  if (seen.delete(id)) writeSeenFrames(seen);
+}
+
+const RECONCILE_EVERY_MS = 10 * 60_000;
 
 export function startBackgroundSync() {
   if (syncStarted || typeof window === "undefined") return;
@@ -821,7 +894,10 @@ export function startBackgroundSync() {
         await flushOutbox();
         const now = Date.now();
         let changed = false;
-        if (forceFull || now - lastFullPull > 30_000) {
+        // Tombstones carry deletions through the feed, so the full download is
+        // no longer part of steady-state sync. It stays only as a slow safety
+        // net against a device that somehow drifted out of step.
+        if (forceFull || now - lastFullPull > RECONCILE_EVERY_MS) {
           lastFullPull = now;
           // Snapshot the cursor first: anything written while the reconcile runs
           // then still comes back through the feed instead of being skipped.
