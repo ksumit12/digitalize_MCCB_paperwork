@@ -280,6 +280,77 @@ function queueInstaller(installer: Installer) {
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let flushing = false;
 let syncStarted = false;
+let tickInFlight = false;
+let tickQueued = false;
+
+const SEEN_FRAMES_KEY = "mccb-seen-frames";
+
+function readSeenFrames(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SEEN_FRAMES_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeSeenFrames(ids: Set<string>) {
+  localStorage.setItem(SEEN_FRAMES_KEY, JSON.stringify([...ids]));
+}
+
+function mergeOutboxAfterFlush(attempted: Outbox, failed: Outbox): Outbox {
+  const live = readOutbox();
+  const merged = emptyOutbox();
+
+  const keepIds = (tried: string[], leftover: string[], current: string[]) => {
+    const failedSet = new Set(leftover);
+    const triedSet = new Set(tried);
+    const out = [...leftover];
+    for (const id of current) {
+      if (out.includes(id)) continue;
+      if (triedSet.has(id) && !failedSet.has(id)) continue;
+      out.push(id);
+    }
+    return out;
+  };
+
+  merged.frames = keepIds(attempted.frames, failed.frames, live.frames);
+  merged.breakers = keepIds(attempted.breakers, failed.breakers, live.breakers);
+  merged.deletedFrames = keepIds(attempted.deletedFrames, failed.deletedFrames, live.deletedFrames);
+  merged.deletedProjects = keepIds(attempted.deletedProjects, failed.deletedProjects, live.deletedProjects);
+
+  const keepRows = <T,>(tried: T[], leftover: T[], current: T[], key: (row: T) => string) => {
+    const failedKeys = new Set(leftover.map(key));
+    const triedKeys = new Set(tried.map(key));
+    const out = [...leftover];
+    const seenKeys = new Set(out.map(key));
+    for (const row of current) {
+      const k = key(row);
+      if (seenKeys.has(k)) continue;
+      if (triedKeys.has(k) && !failedKeys.has(k)) continue;
+      out.push(row);
+      seenKeys.add(k);
+    }
+    return out;
+  };
+
+  merged.strings = keepRows(attempted.strings, failed.strings, live.strings, (s) => s.id);
+  merged.deletedStrings = keepRows(
+    attempted.deletedStrings,
+    failed.deletedStrings,
+    live.deletedStrings,
+    (s) => `${s.projectId}:${s.key}`,
+  );
+  merged.projects = keepRows(attempted.projects, failed.projects, live.projects, (p) => p.id);
+  merged.faults = keepRows(attempted.faults, failed.faults, live.faults, (f) => f.id);
+  merged.installers = keepRows(
+    attempted.installers,
+    failed.installers,
+    live.installers,
+    (i) => i.initials,
+  );
+  return merged;
+}
 
 function scheduleFlush() {
   if (typeof window === "undefined") return;
@@ -354,7 +425,7 @@ async function flushOutbox() {
     for (const installer of box.installers) {
       if (!(await apiPost({ action: "saveInstaller", installer }))) next.installers.push(installer);
     }
-    writeOutbox(next);
+    writeOutbox(mergeOutboxAfterFlush(box, next));
     if (hadWork) notifySync();
   } finally {
     flushing = false;
@@ -410,8 +481,9 @@ async function applyRemoteBreaker(row: BreakerRow): Promise<boolean> {
   if (dirtyHoles.has(row.id)) return false;
   const local = await db.breakers.get(row.id);
   if (local && (local.rev ?? 0) > (row.rev ?? 0)) return false;
-  if (local && (local.rev ?? 0) === (row.rev ?? 0) && breakerFingerprint(local) === breakerFingerprint(row)) {
-    return false;
+  if (local && (local.rev ?? 0) === (row.rev ?? 0)) {
+    if (breakerFingerprint(local) === breakerFingerprint(row)) return false;
+    if (!newer(row.updatedAt, local.updatedAt)) return false;
   }
   await db.breakers.put(row);
   return true;
@@ -453,17 +525,30 @@ export function startBackgroundSync() {
   syncStarted = true;
   let lastFullPull = 0;
   const tick = async (forceFull = false) => {
-    await flushOutbox();
-    const now = Date.now();
-    let changed = false;
-    if (forceFull || now - lastFullPull > 30_000) {
-      changed = await pullRemote();
-      await refreshCursor();
-      lastFullPull = now;
-    } else {
-      changed = await pullChanges();
+    if (tickInFlight) {
+      tickQueued = true;
+      return;
     }
-    if (changed) notifySync();
+    tickInFlight = true;
+    try {
+      do {
+        tickQueued = false;
+        await flushOutbox();
+        const now = Date.now();
+        let changed = false;
+        if (forceFull || now - lastFullPull > 30_000) {
+          lastFullPull = now;
+          changed = await pullRemote();
+          await refreshCursor();
+        } else {
+          changed = await pullChanges();
+        }
+        if (changed) notifySync();
+        forceFull = false;
+      } while (tickQueued);
+    } finally {
+      tickInFlight = false;
+    }
   };
   void (async () => {
     await seedIfEmpty();
@@ -483,8 +568,10 @@ export function startBackgroundSync() {
 }
 
 async function pullRemote(): Promise<boolean> {
+  const pullStartedAt = new Date().toISOString();
   const box = readOutbox();
   const dirty = new Set(box.frames);
+  const seen = readSeenFrames();
   let changed = false;
 
   const projects = await apiGet<Project[]>("listProjects");
@@ -565,6 +652,7 @@ async function pullRemote(): Promise<boolean> {
     const frames = await apiGet<Frame[]>("listFrames", { projectId: pid });
     if (frames) {
       const remoteIds = new Set(frames.map((f) => f.id));
+      for (const id of remoteIds) seen.add(id);
       for (const remote of frames) {
         if (box.deletedFrames.includes(remote.id)) continue;
         const local = await db.frames.get(remote.id);
@@ -577,11 +665,14 @@ async function pullRemote(): Promise<boolean> {
       for (const local of localFrames) {
         if (projectIdOf(local) !== pid) continue;
         if (remoteIds.has(local.id) || dirty.has(local.id)) continue;
+        if (!seen.has(local.id)) continue;
+        if (!newer(pullStartedAt, local.updatedAt)) continue;
         await db.transaction("rw", db.frames, db.breakers, db.faults, async () => {
           await db.frames.delete(local.id);
           await db.breakers.where("frameId").equals(local.id).delete();
           await db.faults.where("frameId").equals(local.id).delete();
         });
+        seen.delete(local.id);
         changed = true;
       }
     }
@@ -616,6 +707,7 @@ async function pullRemote(): Promise<boolean> {
     }
   }
 
+  writeSeenFrames(seen);
   return changed;
 }
 
@@ -694,6 +786,8 @@ export async function saveFrame(frame: Frame): Promise<void> {
   });
   queueFrame(next.id);
   for (const id of dirtyIds) queueBreaker(id);
+  if (flushTimer) clearTimeout(flushTimer);
+  void flushOutbox();
 }
 
 export async function deleteFrame(id: string): Promise<void> {
