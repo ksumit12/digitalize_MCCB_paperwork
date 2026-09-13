@@ -37,12 +37,16 @@ body {
   }
 }
 
-@keyframes chart-line-draw {
+/* Lines are revealed by growing a clip rectangle rather than by animating a
+   dash offset. Under a stretched viewBox with a non-scaling stroke, a dash
+   pattern is measured in screen units while pathLength normalises to user
+   units, and the "line" renders as a handful of long dashes. */
+@keyframes chart-reveal-grow {
   from {
-    stroke-dashoffset: 1;
+    transform: scaleX(0);
   }
   to {
-    stroke-dashoffset: 0;
+    transform: scaleX(1);
   }
 }
 
@@ -91,9 +95,9 @@ body {
   animation: chart-bar-grow 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.chart-line {
-  stroke-dasharray: 1;
-  animation: chart-line-draw 1.1s cubic-bezier(0.4, 0, 0.2, 1) both;
+.chart-reveal {
+  transform-origin: 0 0;
+  animation: chart-reveal-grow 1s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .chart-area {
@@ -133,7 +137,7 @@ body {
   .home-rise,
   .card-rise,
   .chart-bar,
-  .chart-line,
+  .chart-reveal,
   .chart-area,
   .chart-dot,
   .chart-slice,

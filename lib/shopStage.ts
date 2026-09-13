@@ -74,6 +74,11 @@ function rank(stage: ShopStage): number {
   return i < 0 ? 0 : i;
 }
 
+/** Position of a stage in the build sequence, for "has it cleared this?" tests. */
+export function stageRank(stage: ShopStage): number {
+  return rank(stage);
+}
+
 function higher(a: ShopStage, b: ShopStage): ShopStage {
   return rank(a) >= rank(b) ? a : b;
 }
