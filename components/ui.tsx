@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SyncBadge } from "./SyncBadge";
 
 const BACK = {
   home: "bg-zinc-800 text-white",
@@ -149,7 +150,6 @@ export function YesNaRow({
 
 export function Screen({
   title,
-  savedAt,
   backHref,
   backLabel = "Back",
   children,
@@ -171,8 +171,8 @@ export function Screen({
         </Link>
       ) : null}
       <div className="flex items-baseline justify-between gap-3">
-        <h1 className="text-xl font-semibold">{title}</h1>
-        {savedAt ? <p className="text-xs text-neutral-500">Saved {savedAt}</p> : null}
+        <h1 className="min-w-0 text-xl font-semibold">{title}</h1>
+        <SyncBadge />
       </div>
       {children}
     </main>

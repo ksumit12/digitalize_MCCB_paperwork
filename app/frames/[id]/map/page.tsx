@@ -14,6 +14,7 @@ import {
   usedCount,
 } from "@/lib/breaker";
 import { ShopStageChips } from "@/components/ShopStageChips";
+import { SyncBadge } from "@/components/SyncBadge";
 import { frameLabel } from "@/lib/crew";
 import { stagePercent } from "@/lib/shopStage";
 import { useFrame } from "@/lib/useFrame";
@@ -22,7 +23,7 @@ import { use, useEffect, useState } from "react";
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { frame, loading, update, savedAt } = useFrame(id);
+  const { frame, loading, update } = useFrame(id);
   const [slot, setSlot] = useState<{ label: CbsdsLabel; position: number } | null>(null);
   const [board, setBoard] = useState<CbsdsLabel | null>(null);
 
@@ -48,14 +49,16 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
           frame.submitted ? "bg-sky-700 text-white" : testing ? "bg-emerald-700 text-white" : "bg-ink text-white"
         }`}
       >
-        <p className="text-xs uppercase tracking-wide opacity-80">
-          {frame.submitted ? "Submitted" : testing ? "Testing" : "Installing"}
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs uppercase tracking-wide opacity-80">
+            {frame.submitted ? "Submitted" : testing ? "Testing" : "Installing"}
+          </p>
+          <SyncBadge />
+        </div>
         <h1 className="text-xl font-semibold">{name}</h1>
         <p className="text-xs opacity-80">
           {frame.installerName ? `${frame.installerName} · ` : ""}
           {serialsDoneCount(frame)} / {usedCount(frame) || 0} serials
-          {savedAt ? ` · saved ${savedAt}` : ""}
         </p>
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/25">
           <span className="block h-full rounded-full bg-white" style={{ width: `${shopPct}%` }} />

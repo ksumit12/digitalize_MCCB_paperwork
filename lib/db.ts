@@ -120,9 +120,11 @@ async function apiGet<T>(action: string, extra: Record<string, string> = {}): Pr
     const params = new URLSearchParams({ action, projectId: currentProjectId(), ...extra });
     const res = await fetch(`/api/data?${params.toString()}`, { cache: "no-store" });
     const data = await res.json();
+    markReachable(res.ok);
     if (!res.ok) return null;
     return data as T;
   } catch {
+    markReachable(false);
     return null;
   }
 }
@@ -134,8 +136,10 @@ async function apiPost(body: Record<string, unknown>): Promise<boolean> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
+    markReachable(res.ok);
     return res.ok;
   } catch {
+    markReachable(false);
     return false;
   }
 }
@@ -152,8 +156,11 @@ async function apiPostJson<T>(body: Record<string, unknown>): Promise<{
       body: JSON.stringify(body),
     });
     const data = (await res.json()) as T;
+    // A 409 is the server correctly rejecting a stale hole, not a broken link.
+    markReachable(res.ok || res.status === 409);
     return { ok: res.ok, status: res.status, data };
   } catch {
+    markReachable(false);
     return { ok: false, status: 0, data: null };
   }
 }
@@ -173,6 +180,7 @@ type Outbox = {
 const OUTBOX_KEY = "mccb-outbox";
 const CURSOR_KEY = "mccb-changes-cursor";
 const SYNC_EVENT = "mccb-sync";
+const STATUS_EVENT = "mccb-sync-status";
 
 type ChangeFeed = {
   cursor: number;
@@ -383,6 +391,7 @@ function mergeOutboxAfterFlush(attempted: Outbox, failed: Outbox): Outbox {
 
 function scheduleFlush() {
   if (typeof window === "undefined") return;
+  notifyStatus();
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = setTimeout(() => {
     void flushOutbox();
@@ -391,6 +400,55 @@ function scheduleFlush() {
 
 function notifySync() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SYNC_EVENT));
+}
+
+export type SyncStatus = {
+  /** Writes made on this device that Neon has not accepted yet. */
+  pending: number;
+  /** False once a request fails, until one succeeds again. */
+  reachable: boolean;
+  /** When the shared database last accepted everything we had. */
+  lastSyncedAt: string | null;
+};
+
+let reachable = true;
+let lastSyncedAt: string | null = null;
+
+function markReachable(ok: boolean) {
+  if (reachable === ok) return;
+  reachable = ok;
+  notifyStatus();
+}
+
+function countPending(box: Outbox): number {
+  return (
+    box.frames.length +
+    box.breakers.length +
+    box.deletedFrames.length +
+    box.strings.length +
+    box.deletedStrings.length +
+    box.projects.length +
+    box.deletedProjects.length +
+    box.faults.length +
+    box.installers.length
+  );
+}
+
+export function getSyncStatus(): SyncStatus {
+  if (typeof window === "undefined") return { pending: 0, reachable: true, lastSyncedAt: null };
+  return { pending: countPending(readOutbox()), reachable, lastSyncedAt };
+}
+
+function notifyStatus() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(STATUS_EVENT));
+}
+
+/** Fires whenever the queue or reachability changes, even if no data changed. */
+export function onSyncStatus(handler: () => void) {
+  if (typeof window === "undefined") return () => {};
+  startBackgroundSync();
+  window.addEventListener(STATUS_EVENT, handler);
+  return () => window.removeEventListener(STATUS_EVENT, handler);
 }
 
 async function flushOutbox() {
@@ -468,8 +526,13 @@ async function flushOutbox() {
     for (const installer of box.installers) {
       if (!(await apiPost({ action: "saveInstaller", installer }))) next.installers.push(installer);
     }
-    writeOutbox(mergeOutboxAfterFlush(box, next));
-    if (hadWork) notifySync();
+    const remaining = mergeOutboxAfterFlush(box, next);
+    writeOutbox(remaining);
+    if (countPending(remaining) === 0 && reachable) lastSyncedAt = new Date().toISOString();
+    if (hadWork) {
+      notifySync();
+      notifyStatus();
+    }
   } finally {
     flushing = false;
   }
@@ -810,10 +873,21 @@ export function normalizeInitials(raw: string): string {
 export async function listFrames(): Promise<Frame[]> {
   startBackgroundSync();
   const pid = currentProjectId();
-  const all = await db.frames.toArray();
-  const rows = all.filter((f) => (f.projectId || DEFAULT_PROJECT_ID) === pid);
-  const ordered = rows.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
-  return Promise.all(ordered.map(hydrate));
+  const [all, holes] = await Promise.all([db.frames.toArray(), db.breakers.toArray()]);
+  const mine = all
+    .filter((f) => (f.projectId || DEFAULT_PROJECT_ID) === pid)
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  // One pass over the holes grouped in memory, rather than an index lookup per
+  // frame. Keyed on frameId only, so a row whose projectId drifted still lands.
+  const wanted = new Set(mine.map((f) => f.id));
+  const byFrame = new Map<string, BreakerRow[]>();
+  for (const row of holes) {
+    if (!wanted.has(row.frameId)) continue;
+    const list = byFrame.get(row.frameId);
+    if (list) list.push(row);
+    else byFrame.set(row.frameId, [row]);
+  }
+  return mine.map((frame) => hydrateFrame(withFrameDefaults(frame), byFrame.get(frame.id) || []));
 }
 
 export async function getFrame(id: string): Promise<Frame | undefined> {

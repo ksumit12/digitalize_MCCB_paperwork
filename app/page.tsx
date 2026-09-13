@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { StringBoard } from "@/components/StringBoard";
 import { HomeMenu } from "@/components/HomeMenu";
+import { SyncBadge } from "@/components/SyncBadge";
 import {
   addStringRun,
   archiveStringRun,
@@ -64,17 +65,19 @@ export default function HomePage() {
       const pid = currentProjectId();
       setProjectName(projects.find((p) => p.id === pid)?.name || "Current project");
       const keys = new Set([...stringRuns.map((r) => r.key), ...list.map((f) => stringKeyFromFrame(f))]);
+      let archived = false;
       for (const key of keys) {
         const group = list.filter((f) => stringKeyFromFrame(f) === key);
         const complete = submittedSlotCount(group) >= FRAME_SLOTS.length;
         const run = stringRuns.find((r) => r.key === key);
         if (complete && !run?.archivedAt) {
           await archiveStringRun(key);
+          archived = true;
         }
       }
-      const [list2, runs2] = await Promise.all([listFrames(), listStringRuns()]);
-      setFrames(list2);
-      setRuns(runs2);
+      setFrames(list);
+      // Archiving only touches string rows, so the frames we already have stand.
+      setRuns(archived ? await listStringRuns() : stringRuns);
       setReady(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load this phone's data");
@@ -124,6 +127,9 @@ export default function HomePage() {
           <div className="home-rise min-w-0 pt-0.5">
             <p className="text-sm text-neutral-500">{hello || " "}</p>
             <h1 className="text-3xl font-semibold leading-tight">{projectName || "Project"}</h1>
+            <div className="mt-1.5">
+              <SyncBadge />
+            </div>
           </div>
         </div>
         <button
