@@ -79,7 +79,7 @@ export default function BreakerPage({
         {!normalizeInitials(breaker.mccbScannedBy || lastInstaller()?.initials || "") ? (
           <p className="mt-2 text-sm text-red-700">Pick who scanned before Confirm.</p>
         ) : breaker.mccbScannedAt ? (
-          <p className="mt-2 text-xs text-neutral-500">
+          <p className="mt-2 text-xs text-muted">
             Logged {breaker.mccbScannedBy} · {new Date(breaker.mccbScannedAt).toLocaleString()}
           </p>
         ) : null}
@@ -92,7 +92,7 @@ export default function BreakerPage({
               type="button"
               onClick={() => patchBreaker({ ...breaker, micrologicModel: m as MicrologicModel })}
               className={`flex-1 rounded-lg border py-2 ${
-                (breaker.micrologicModel || "2.2") === m ? "bg-ink text-white" : "bg-white"
+                (breaker.micrologicModel || "2.2") === m ? "bg-accent text-accent-ink" : "bg-surface"
               }`}
             >
               ML {m}
@@ -115,7 +115,7 @@ export default function BreakerPage({
               type="button"
               onClick={() => patchBreaker(setAmp(breaker, amp))}
               className={`flex-1 rounded-lg border py-2 ${
-                breaker.micrologicSettingAmps === amp ? "bg-ink text-white" : "bg-white"
+                breaker.micrologicSettingAmps === amp ? "bg-accent text-accent-ink" : "bg-surface"
               }`}
             >
               {amp}A
@@ -134,7 +134,7 @@ export default function BreakerPage({
           />
         </Field>
       ) : breaker.micrologicSettingAmps === 32 ? (
-        <p className="rounded-lg bg-neutral-100 p-3 text-sm">No shunt (32A)</p>
+        <p className="rounded-lg bg-surface-2 p-3 text-sm">No shunt (32A)</p>
       ) : null}
       <CheckRow
         label="Install MCCB per Shop Drawing"

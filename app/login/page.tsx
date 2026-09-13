@@ -38,7 +38,7 @@ export default function LoginPage() {
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 p-6">
       <div>
         <h1 className="text-xl font-semibold">MCCB Frame QA</h1>
-        <p className="mt-1 text-sm text-neutral-600">Enter the crew passcode to open the job board.</p>
+        <p className="mt-1 text-sm text-muted">Enter the crew passcode to open the job board.</p>
       </div>
 
       <form onSubmit={submit} className="space-y-3">
@@ -58,13 +58,13 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={busy || !passcode.trim()}
-          className="w-full rounded-2xl bg-ink px-4 py-3 text-base font-semibold text-white disabled:opacity-40"
+          className="w-full rounded-2xl bg-accent px-4 py-3 text-base font-semibold text-accent-ink disabled:opacity-40"
         >
           {busy ? "Checking…" : "Open"}
         </button>
       </form>
 
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-muted">
         Stays signed in on this device for 90 days. Work you have already scanned is kept on the
         device and will sync once you are back in range.
       </p>

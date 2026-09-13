@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const LINKS = [
-  { href: "/", label: "Strings", hint: "Frames on the shop floor" },
-  { href: "/progress", label: "Progress", hint: "Day, week and month figures" },
-  { href: "/find", label: "Find MCCB", hint: "Serial → string · slot · hole" },
-  { href: "/faults", label: "Faults", hint: "Replaced MCCB, ML, shunt" },
-  { href: "/projects", label: "Projects", hint: "This job vs a new job" },
+  { href: "/", label: "Strings", short: "Strings", hint: "Frames on the shop floor" },
+  { href: "/progress", label: "Progress", short: "Progress", hint: "Day, week and month figures" },
+  { href: "/find", label: "Find MCCB", short: "Find", hint: "Serial → string · slot · hole" },
+  { href: "/faults", label: "Faults", short: "Faults", hint: "Replaced MCCB, ML, shunt" },
+  { href: "/projects", label: "Projects", short: "Projects", hint: "This job vs a new job" },
 ];
 
 export function HomeMenu() {
@@ -20,16 +20,25 @@ export function HomeMenu() {
     setOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   return (
     <>
       <button
         type="button"
         aria-label="Open menu"
         onClick={() => setOpen(true)}
-        className="flex h-11 w-11 items-center justify-center rounded-2xl bg-zinc-100"
+        className="tile-press flex h-11 w-11 items-center justify-center rounded-2xl bg-surface text-ink shadow-card ring-1 ring-rule md:hidden"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
-          <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+          <path d="M5 8h14M5 12h10M5 16h14" strokeLinecap="round" />
         </svg>
       </button>
       {open ? (
@@ -37,22 +46,35 @@ export function HomeMenu() {
           <button
             type="button"
             aria-label="Close menu"
-            className="absolute inset-0 bg-black/40"
+            className="sheet-backdrop absolute inset-0 bg-black/50"
             onClick={() => setOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-white px-4 py-6 shadow-xl">
-            <p className="px-2 text-xs font-medium uppercase tracking-wide text-neutral-400">Menu</p>
-            <nav className="mt-3 space-y-2">
-              {LINKS.map((item) => {
+          <aside className="sheet-in absolute inset-y-0 left-0 flex w-[min(20rem,86vw)] flex-col bg-canvas px-4 py-6 shadow-lift">
+            <div className="mb-6 flex items-center justify-between px-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Menu</p>
+              <button
+                type="button"
+                aria-label="Close menu"
+                onClick={() => setOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-ink"
+              >
+                <span className="text-lg leading-none">×</span>
+              </button>
+            </div>
+            <nav className="space-y-2">
+              {LINKS.map((item, i) => {
                 const on = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`block rounded-2xl px-4 py-4 ${on ? "bg-ink text-white" : "bg-zinc-100"}`}
+                    style={{ animationDelay: `${80 + i * 45}ms` }}
+                    className={`sheet-in block rounded-2.5xl px-4 py-4 ${
+                      on ? "bg-accent text-accent-ink" : "bg-surface text-ink"
+                    }`}
                   >
-                    <p className="text-lg font-semibold">{item.label}</p>
-                    <p className={`text-sm ${on ? "text-white/70" : "text-neutral-500"}`}>{item.hint}</p>
+                    <p className="text-lg font-semibold tracking-tight">{item.label}</p>
+                    <p className={`mt-0.5 text-sm ${on ? "text-accent-ink/70" : "text-muted"}`}>{item.hint}</p>
                   </Link>
                 );
               })}
@@ -61,5 +83,27 @@ export function HomeMenu() {
         </div>
       ) : null}
     </>
+  );
+}
+
+export function DesktopNav() {
+  const pathname = usePathname();
+  return (
+    <nav className="hidden min-w-0 flex-wrap items-center gap-1 md:flex">
+      {LINKS.map((item) => {
+        const on = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`rounded-full px-3.5 py-2 text-sm font-medium ${
+              on ? "bg-accent text-accent-ink" : "text-muted hover:bg-surface hover:text-ink"
+            }`}
+          >
+            {item.short}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

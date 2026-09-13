@@ -40,7 +40,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
 
   return (
     <Screen title="Electrical testing" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
-      <section className="space-y-2 rounded-xl border border-rule bg-white p-3">
+      <section className="space-y-2 rounded-xl border border-rule bg-surface p-3">
         <h2 className="font-medium">Visual inspection P/F</h2>
         <div className="grid grid-cols-4 gap-2">
           {LABELS.map((l) => (
@@ -61,7 +61,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
           ))}
         </div>
       </section>
-      <section className="space-y-3 rounded-xl border border-rule bg-white p-3">
+      <section className="space-y-3 rounded-xl border border-rule bg-surface p-3">
         <h2 className="font-medium">IR — all MCCBs OFF, FCL fuses pulled</h2>
         {LABELS.map((l) => (
           <details key={l} className="rounded-lg border border-rule p-2">
@@ -106,11 +106,11 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
                 onToggle={(e) => {
                   if ((e.target as HTMLDetailsElement).open) setOpenWhip(key);
                 }}
-                className="rounded-xl border border-rule bg-white p-3"
+                className="rounded-xl border border-rule bg-surface p-3"
               >
                 <summary className="cursor-pointer font-medium">{key}</summary>
                 <div className="mt-3 space-y-3">
-                  <p className="text-sm text-neutral-600">
+                  <p className="text-sm text-muted">
                     Install serials — MCCB {install.mccbSerialNumber || "—"} · ML{" "}
                     {install.microLogicSerialNumber || "—"}
                   </p>
@@ -123,7 +123,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
                     />
                   </Field>
                   {mccbWarn ? (
-                    <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
+                    <p className="rounded-lg bg-amber-500/15 p-2 text-sm text-amber-400">
                       MCCB serial differs from install. Check the breaker is in the right slot.
                     </p>
                   ) : null}
@@ -136,7 +136,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
                     />
                   </Field>
                   {mlWarn ? (
-                    <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
+                    <p className="rounded-lg bg-amber-500/15 p-2 text-sm text-amber-400">
                       Micrologic serial differs from install. Check the breaker is in the right slot.
                     </p>
                   ) : null}
@@ -161,7 +161,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
           }),
         )}
       </section>
-      <section className="space-y-2 rounded-xl border border-rule bg-white p-3">
+      <section className="space-y-2 rounded-xl border border-rule bg-surface p-3">
         <h2 className="font-medium">Shunt trip live test</h2>
         {(
           [
@@ -184,7 +184,7 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
                 }
               />
             ) : (
-              <span className="text-neutral-500">N/A (32A / no MX)</span>
+              <span className="text-muted">N/A (32A / no MX)</span>
             )}
           </label>
         ))}

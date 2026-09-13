@@ -1,8 +1,7 @@
 "use client";
 
 import { FrameNav } from "@/components/FrameNav";
-import { use, useMemo } from "react";
-import { usePathname } from "next/navigation";
+import { use } from "react";
 
 export default function FrameLayout({
   children,
@@ -12,25 +11,9 @@ export default function FrameLayout({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const pathname = usePathname();
-  const wash = useMemo(() => {
-    if (
-      pathname.includes("/more") ||
-      pathname.includes("/handover") ||
-      pathname.includes("/install") ||
-      pathname.includes("/ancillary") ||
-      pathname.includes("/testing")
-    ) {
-      return "bg-indigo-50";
-    }
-    if (pathname.includes("/map") || pathname.includes("/cbsds")) {
-      return "bg-teal-50";
-    }
-    return "bg-paper";
-  }, [pathname]);
 
   return (
-    <div className={`min-h-screen pb-20 ${wash}`}>
+    <div className="min-h-dvh bg-canvas pb-24">
       <FrameNav frameId={id} />
       {children}
     </div>

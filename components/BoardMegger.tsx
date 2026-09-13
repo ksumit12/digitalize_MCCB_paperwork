@@ -19,12 +19,12 @@ export function BoardMegger({
   const sign = frame.electricalTesting.frameIrSign;
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-teal-50">
+    <div className="fixed inset-0 z-40 flex flex-col bg-canvas">
       <header className="flex items-center justify-between px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
+          className="rounded-xl bg-testing px-3 py-2 text-sm font-semibold text-on-testing"
         >
           ← Board
         </button>
@@ -32,8 +32,8 @@ export function BoardMegger({
         <span className="w-8" />
       </header>
       <div className="flex-1 overflow-auto px-4 pb-8">
-        <p className="mb-3 text-sm text-neutral-600">All MCCBs OFF, FCL fuses pulled.</p>
-        <div className="mb-4 rounded-2xl bg-white p-3 text-sm">
+        <p className="mb-3 text-sm text-muted">All MCCBs OFF, FCL fuses pulled.</p>
+        <div className="mb-4 rounded-2xl bg-surface p-3 text-sm">
           <p>Manufacturer: {frame.manufacturer || "—"}</p>
           <p>
             Board {label} serial: {frame.cbsds.find((c) => c.label === label)?.cbsdsSerialNumber || "—"}
@@ -46,7 +46,7 @@ export function BoardMegger({
               type="button"
               onClick={() => onChange(readings, v, sign)}
               className={`flex-1 rounded-2xl py-3 ${
-                visual === v ? "bg-ink text-white" : "bg-white"
+                visual === v ? "bg-accent text-accent-ink" : "bg-surface"
               }`}
             >
               Visual {v}
@@ -61,9 +61,9 @@ export function BoardMegger({
           value={sign}
           onChange={(e) => onChange(readings, visual, e.target.value)}
           placeholder="Sign"
-          className="mt-4 w-full rounded-2xl border border-rule bg-white px-4 py-3"
+          className="mt-4 w-full rounded-2xl border border-rule bg-surface px-4 py-3"
         />
-        <button type="button" onClick={onClose} className="mt-4 w-full rounded-2xl bg-ink py-4 text-white">
+        <button type="button" onClick={onClose} className="mt-4 w-full rounded-2xl bg-accent py-4 text-accent-ink">
           Done
         </button>
       </div>

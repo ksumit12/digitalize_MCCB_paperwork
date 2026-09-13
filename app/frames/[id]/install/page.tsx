@@ -35,7 +35,7 @@ export default function InstallPage({ params }: { params: Promise<{ id: string }
 
   return (
     <Screen title="Frame install" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
-      <p className="rounded-2xl bg-white px-4 py-3 text-sm">
+      <p className="rounded-2xl bg-surface px-4 py-3 text-sm">
         String {frame.stringKey || "1"} · {frame.frameSlot || frame.stringId || "—"}
       </p>
       <div className="grid grid-cols-2 gap-3">
@@ -71,7 +71,7 @@ export default function InstallPage({ params }: { params: Promise<{ id: string }
           <select
             value={frame.market}
             onChange={(e) => update((f) => ({ ...f, market: e.target.value as typeof f.market }))}
-            className="w-full rounded-lg border border-rule bg-white px-3 py-2.5"
+            className="w-full rounded-lg border border-rule bg-surface px-3 py-2.5"
           >
             <option value="">—</option>
             <option value="INT">INT</option>

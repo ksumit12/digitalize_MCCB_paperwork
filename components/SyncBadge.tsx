@@ -13,7 +13,7 @@ function agoLabel(iso: string | null): string {
   return `${Math.round(mins / 60)}h ago`;
 }
 
-export function SyncBadge() {
+export function SyncBadge({ onDark = false }: { onDark?: boolean }) {
   const [status, setStatus] = useState<SyncStatus>({ pending: 0, reachable: true, lastSyncedAt: null });
 
   useEffect(() => {
@@ -32,10 +32,12 @@ export function SyncBadge() {
   const waiting = status.reachable && status.pending > 0;
 
   const tone = stuck
-    ? "bg-red-50 text-red-800 ring-red-200"
+    ? "bg-red-500/15 text-red-400 ring-red-500/25"
     : waiting
-      ? "bg-amber-50 text-amber-800 ring-amber-200"
-      : "bg-zinc-100 text-neutral-500 ring-transparent";
+      ? "bg-amber-500/15 text-amber-300 ring-amber-500/25"
+      : onDark
+        ? "bg-white/10 text-white/80 ring-white/15"
+        : "bg-surface-2 text-muted ring-rule";
 
   const label = stuck
     ? `Not saved · ${status.pending} waiting`

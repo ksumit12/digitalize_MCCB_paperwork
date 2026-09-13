@@ -71,7 +71,7 @@ export default function AncillaryPage({ params }: { params: Promise<{ id: string
 
   return (
     <Screen title="Lights & wiring" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
-      <div className="rounded-2xl border border-rule bg-white p-3">
+      <div className="rounded-2xl border border-rule bg-surface p-3">
         <p className="mb-2 text-sm font-medium">Who is wiring</p>
         <SignPick
           value={initials}
@@ -140,7 +140,7 @@ export default function AncillaryPage({ params }: { params: Promise<{ id: string
         onChange={(v) => setItem("dinRailGpo", v)}
       />
       {hideEm ? (
-        <p className="rounded-lg bg-neutral-100 p-3 text-sm">Em Light Test Facility is INT only.</p>
+        <p className="rounded-lg bg-surface-2 p-3 text-sm">Em Light Test Facility is INT only.</p>
       ) : (
         <ItemRow
           label="Install Em Light Test Facility (INT only)"

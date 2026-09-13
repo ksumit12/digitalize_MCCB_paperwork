@@ -23,16 +23,16 @@ import type { Bucket } from "@/lib/progress";
  * page with no red on it can be trusted at a glance.
  */
 export const PALETTE = {
-  ink: "#151a21",
+  ink: "var(--ink)",
   steel: "#2f5d8a",
   steelSoft: "#8fb0cc",
   ahead: "#0f7f5b",
   behind: "#b3253c",
   warn: "#b26a09",
-  muted: "#9a958c",
-  baseline: "#c9c5bc",
-  grid: "#e7e4dc",
-  track: "#eceae4",
+  muted: "var(--muted)",
+  baseline: "var(--rule)",
+  grid: "var(--rule)",
+  track: "var(--surface-2)",
 };
 
 /** Tints, for fills that sit under a line of the same colour. */
@@ -193,7 +193,7 @@ export function TargetBars({
                 const surplus = Math.max(0, b.handedOver - b.target);
                 const base = Math.min(b.handedOver, b.target || b.handedOver);
                 return (
-                  <div key={b.start} className="group relative flex h-full flex-1">
+                  <div key={b.start} className="group relative flex h-full flex-1" tabIndex={0}>
                     {/* Scaling the whole stack grows every segment together. */}
                     <div className="chart-bar absolute inset-0 origin-bottom">
                       <Segment
@@ -239,14 +239,14 @@ export function TargetBars({
 
                     {b.handedOver > 0 ? (
                       <span
-                        className="pointer-events-none absolute inset-x-0 text-center text-[10px] font-medium tabular-nums text-neutral-500"
+                        className="pointer-events-none absolute inset-x-0 text-center text-[10px] font-medium tabular-nums text-muted"
                         style={{ bottom: `calc(${pct(Math.max(b.handedOver, b.target))}% + 3px)` }}
                       >
                         {b.handedOver}
                       </span>
                     ) : null}
 
-                    <span className="pointer-events-none absolute -top-9 left-1/2 z-20 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink px-2 py-1 text-[10px] font-medium text-white group-hover:block">
+                    <span className="pointer-events-none absolute -top-9 left-1/2 z-20 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-surface-2 px-2 py-1 text-[10px] font-medium text-ink ring-1 ring-rule group-hover:block group-focus-within:block group-active:block">
                       {b.label}: {b.handedOver} {unitLabel}
                       {b.target > 0 ? ` of ${fmtAxis(b.target)}` : " · not a working day"}
                       {b.partial ? " so far" : ""}
@@ -261,7 +261,7 @@ export function TargetBars({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-500">
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
         <LegendKey color={PALETTE.steel} label="Handed over" block />
         <LegendKey color={PALETTE.ahead} label="Beyond target" block />
         <LegendKey color={PALETTE.behind} label="Short of target" dashed />
@@ -314,7 +314,7 @@ function YAxis({
       {[1, 0.5, 0].map((f) => (
         <span
           key={f}
-          className="absolute right-0 -translate-y-1/2 text-[10px] tabular-nums text-neutral-400"
+          className="absolute right-0 -translate-y-1/2 text-[10px] tabular-nums text-muted"
           style={{ top: `${insetPct + (1 - f) * (100 - insetPct * 2)}%` }}
         >
           {fmtAxis(top * f)}
@@ -330,7 +330,7 @@ function YAxis({
  */
 function AxisLabels({ buckets, gap }: { buckets: Bucket[]; gap: number }) {
   return (
-    <div className="mt-2 flex text-[10px] text-neutral-400" style={{ gap: `${gap}px` }}>
+    <div className="mt-2 flex text-[10px] text-muted" style={{ gap: `${gap}px` }}>
       {buckets.map((b) => (
         <span key={b.start} className="relative flex-1">
           {b.tick ? (
@@ -350,7 +350,7 @@ function AxisLabels({ buckets, gap }: { buckets: Bucket[]; gap: number }) {
  */
 function LineLabels({ labels, shown }: { labels: string[]; shown: (i: number) => boolean }) {
   return (
-    <div className="mt-1 flex text-[10px] text-neutral-400">
+    <div className="mt-1 flex text-[10px] text-muted">
       {labels.map((label, i) => {
         const first = i === 0;
         const last = i === labels.length - 1;
@@ -446,7 +446,7 @@ export function FlowBars({ buckets }: { buckets: Bucket[] }) {
             <Gridlines />
             <div className="flex h-full items-end gap-[3px]">
               {buckets.map((b) => (
-                <div key={b.start} className="group relative flex h-full flex-1 items-end gap-[1px]">
+                <div key={b.start} className="group relative flex h-full flex-1 items-end gap-[1px]" tabIndex={0}>
                   <div
                     className="chart-bar h-full flex-1 origin-bottom self-end rounded-t-[2px]"
                     style={{
@@ -462,7 +462,7 @@ export function FlowBars({ buckets }: { buckets: Bucket[] }) {
                       animationDelay: "80ms",
                     }}
                   />
-                  <span className="pointer-events-none absolute -top-9 left-1/2 z-20 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink px-2 py-1 text-[10px] font-medium text-white group-hover:block">
+                  <span className="pointer-events-none absolute -top-9 left-1/2 z-20 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-surface-2 px-2 py-1 text-[10px] font-medium text-ink ring-1 ring-rule group-hover:block group-focus-within:block group-active:block">
                     {b.label}: {b.started} opened, {b.handedOver} finished
                   </span>
                 </div>
@@ -472,7 +472,7 @@ export function FlowBars({ buckets }: { buckets: Bucket[] }) {
           <AxisLabels buckets={buckets} gap={3} />
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-500">
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
         <LegendKey color={PALETTE.steelSoft} label="Frames opened" block />
         <LegendKey color={PALETTE.steel} label="Frames handed over" block />
       </div>
@@ -585,7 +585,7 @@ export function RailBar({
     <div>
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 truncate text-sm font-medium">{label}</p>
-        <p className="shrink-0 text-sm tabular-nums text-neutral-500">{value}</p>
+        <p className="shrink-0 text-sm tabular-nums text-muted">{value}</p>
       </div>
       <div className="mt-1.5 h-2 overflow-hidden rounded-full" style={{ background: PALETTE.track }}>
         <div
@@ -597,7 +597,7 @@ export function RailBar({
           }}
         />
       </div>
-      {caption ? <p className="mt-1 text-xs text-neutral-400">{caption}</p> : null}
+      {caption ? <p className="mt-1 text-xs text-muted">{caption}</p> : null}
     </div>
   );
 }
@@ -685,7 +685,7 @@ export function TrendLine({
 
   if (points.length < 2) {
     return (
-      <p className="py-8 text-center text-sm text-neutral-400">
+      <p className="py-8 text-center text-sm text-muted">
         Not enough finished periods yet to show a trend.
       </p>
     );
@@ -885,7 +885,7 @@ export function Burndown({
           />
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-500">
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
         <LegendKey color={PALETTE.ink} label="Work left" />
         <LegendKey color={PALETTE.ahead} label="At target rate" dashed />
         <LegendKey color={PALETTE.behind} label="At current rate" dashed />
@@ -988,7 +988,7 @@ export function FinishWindow({
             style={{ background: targetBeforeBest ? PALETTE.behind : PALETTE.ahead }}
           />
         </span>
-        <span className="absolute bottom-0 left-0 text-[10px] text-neutral-400">
+        <span className="absolute bottom-0 left-0 text-[10px] text-muted">
           {formatDate(from)}
         </span>
       </div>
@@ -997,7 +997,7 @@ export function FinishWindow({
         <Milestone label="Likely" value={formatDate(likely)} color={PALETTE.ink} />
         <Milestone label="Bad run" value={formatDate(worst)} color={PALETTE.warn} />
       </dl>
-      <p className="mt-3 text-xs leading-snug text-neutral-500">
+      <p className="mt-3 text-xs leading-snug text-muted">
         {targetBeforeBest
           ? `Hitting ${formatDate(target)} needs a better week than any of the last few, so the target date is not in reach on current form.`
           : targetAfterWorst
@@ -1011,7 +1011,7 @@ export function FinishWindow({
 function Milestone({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wide text-neutral-400">{label}</dt>
+      <dt className="text-[10px] uppercase tracking-wide text-muted">{label}</dt>
       <dd className="text-[13px] font-medium tabular-nums" style={{ color }}>
         {value}
       </dd>
@@ -1020,9 +1020,9 @@ function Milestone({ label, value, color }: { label: string; value: string; colo
 }
 
 /**
- * Frames that have cleared each stage of the build, as a share of the planned
- * job. Steps narrow left to right; the biggest drop between two steps is where
- * work is queuing.
+ * Frames that have cleared each stage, read top to bottom like the job.
+ * Bar length is against the busiest stage so the fall-off is visible; the
+ * number beside it is still out of the planned total.
  */
 export function StageFunnel({
   steps,
@@ -1035,47 +1035,55 @@ export function StageFunnel({
     (worst, step, i) => {
       if (i === 0) return worst;
       const drop = steps[i - 1].cleared - step.cleared;
-      return drop > worst.drop ? { drop, label: step.label } : worst;
+      return drop > worst.drop ? { drop, stage: step.stage, label: step.label } : worst;
     },
-    { drop: 0, label: "" },
+    { drop: 0, stage: "", label: "" },
   );
+  const peak = Math.max(1, ...steps.map((step) => step.cleared));
 
   return (
-    <div>
-      <div className="flex items-end gap-1" style={{ height: 150 }}>
+    <div id="stage-funnel">
+      <ol className="space-y-2.5">
         {steps.map((step, i) => {
-          const isChoke = step.label === biggestDrop.label && biggestDrop.drop > 0;
+          const isChoke = step.stage === biggestDrop.stage && biggestDrop.drop > 0;
+          const drop = i === 0 ? 0 : steps[i - 1].cleared - step.cleared;
+          const fill = Math.min(100, (step.cleared / peak) * 100);
           return (
-            <div key={step.stage} className="group relative flex h-full flex-1 flex-col justify-end">
-              <div
-                className="chart-bar w-full origin-bottom rounded-t-[3px]"
-                style={{
-                  height: `${Math.max(step.cleared > 0 ? 2 : 0, (step.cleared / Math.max(1, plannedFrames)) * 100)}%`,
-                  background: isChoke ? PALETTE.warn : PALETTE.steel,
-                  opacity: isChoke ? 1 : 0.4 + (0.6 * (steps.length - i)) / steps.length,
-                  animationDelay: `${i * 35}ms`,
-                }}
-              />
-              <span className="pointer-events-none absolute -top-8 left-1/2 z-20 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink px-2 py-1 text-[10px] font-medium text-white group-hover:block">
-                {step.cleared} cleared {step.label} · {step.pct}%
-              </span>
-            </div>
+            <li key={step.stage} className="min-w-0">
+              <div className="mb-1 flex items-baseline justify-between gap-3">
+                <span className={`min-w-0 truncate text-sm ${isChoke ? "font-semibold text-ink" : "text-ink"}`}>
+                  {step.label}
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-muted">
+                  <span className={isChoke ? "font-semibold text-ink" : "text-ink"}>{step.cleared}</span>
+                  <span className="text-muted/70"> / {plannedFrames}</span>
+                  {isChoke && drop > 0 ? (
+                    <span className="ml-1.5 font-medium" style={{ color: PALETTE.warn }}>
+                      −{drop}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
+                <span
+                  className="chart-rail block h-full rounded-full"
+                  style={{
+                    width: `${fill}%`,
+                    background: isChoke ? PALETTE.warn : PALETTE.steel,
+                    animationDelay: `${i * 28}ms`,
+                  }}
+                />
+              </div>
+            </li>
           );
         })}
-      </div>
-      <div className="mt-2 flex gap-1 text-[9px] leading-tight text-neutral-400">
-        {steps.map((step) => (
-          <span key={step.stage} className="flex-1 text-center">
-            <span className="block truncate">{step.label}</span>
-            <span className="block tabular-nums text-neutral-500">{step.cleared}</span>
-          </span>
-        ))}
-      </div>
+      </ol>
       {biggestDrop.drop > 0 ? (
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-xs text-muted">
           Biggest fall-off is into{" "}
           <span className="font-medium text-ink">{biggestDrop.label}</span>, where{" "}
-          {biggestDrop.drop} frames have not followed through from the stage before.
+          {biggestDrop.drop === 1 ? "1 frame has" : `${biggestDrop.drop} frames have`} not followed
+          through from the stage before.
         </p>
       ) : null}
     </div>
@@ -1137,7 +1145,7 @@ export function AttainmentDial({
         >
           <CountUp value={Math.round(attainment * 100)} format={(n) => `${Math.round(n)}%`} />
         </span>
-        <span className={`mt-1 text-[11px] ${onDark ? "text-white/55" : "text-neutral-500"}`}>
+        <span className={`mt-1 text-[11px] ${onDark ? "text-white/55" : "text-muted"}`}>
           {actual} of {Math.round(target * 10) / 10}
         </span>
       </div>

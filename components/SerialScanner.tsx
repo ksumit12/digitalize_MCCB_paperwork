@@ -121,7 +121,7 @@ export function SerialScanner({
       {hero ? (
         <div className="space-y-3">
           {value ? (
-            <p className="rounded-2xl bg-white px-4 py-3 text-center text-lg font-semibold">{value}</p>
+            <p className="rounded-2xl bg-surface px-4 py-3 text-center text-lg font-semibold">{value}</p>
           ) : null}
           {serialKind === "ml" ? (
             <button
@@ -130,7 +130,7 @@ export function SerialScanner({
                 setError("");
                 setOpen(true);
               }}
-              className="w-full rounded-2xl bg-ink py-5 text-lg font-medium text-white"
+              className="w-full rounded-2xl bg-accent py-5 text-lg font-medium text-accent-ink"
             >
               Scan QR
             </button>
@@ -142,7 +142,7 @@ export function SerialScanner({
                 setError("");
                 setPhotoOpen(true);
               }}
-              className="w-full rounded-2xl bg-ink py-5 text-lg font-medium text-white"
+              className="w-full rounded-2xl bg-accent py-5 text-lg font-medium text-accent-ink"
             >
               {serialKind === "shunt" ? "Scan batch" : "Scan sticker"}
             </button>
@@ -157,7 +157,7 @@ export function SerialScanner({
             type="button"
             disabled={!manual.trim()}
             onClick={() => save(manual)}
-            className="w-full rounded-2xl bg-ink py-4 text-white disabled:opacity-30"
+            className="w-full rounded-2xl bg-accent py-4 text-accent-ink disabled:opacity-30"
           >
             Use typed
           </button>
@@ -180,7 +180,7 @@ export function SerialScanner({
                 setError("");
                 setOpen(true);
               }}
-              className="shrink-0 rounded-lg bg-ink px-3 py-2 text-sm text-white"
+              className="shrink-0 rounded-lg bg-accent px-3 py-2 text-sm text-accent-ink"
             >
               QR
             </button>
@@ -192,7 +192,7 @@ export function SerialScanner({
                 setError("");
                 setPhotoOpen(true);
               }}
-              className="shrink-0 rounded-lg bg-ink px-3 py-2 text-sm text-white"
+              className="shrink-0 rounded-lg bg-accent px-3 py-2 text-sm text-accent-ink"
             >
               Scan
             </button>
@@ -211,10 +211,10 @@ export function SerialScanner({
       ) : null}
       {open && serialKind === "ml" ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center">
-          <div className="max-h-[92dvh] w-full max-w-md overflow-auto rounded-2xl bg-white p-4">
+          <div className="max-h-[92dvh] w-full max-w-md overflow-auto rounded-2xl bg-surface p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-semibold">{label}</h2>
-              <button type="button" onClick={close} className="text-sm text-neutral-500">
+              <button type="button" onClick={close} className="text-sm text-muted">
                 Close
               </button>
             </div>
@@ -230,7 +230,7 @@ export function SerialScanner({
               type="button"
               disabled={!manual.trim()}
               onClick={() => save(manual)}
-              className="mt-2 w-full rounded-lg bg-ink py-3 text-white disabled:opacity-40"
+              className="mt-2 w-full rounded-lg bg-accent py-3 text-accent-ink disabled:opacity-40"
             >
               Confirm
             </button>

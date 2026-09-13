@@ -21,12 +21,12 @@ export function SwitchboardInstall({
   const cbsds = frame.cbsds.find((c) => c.label === label)!;
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-teal-50">
+    <div className="fixed inset-0 z-40 flex flex-col bg-canvas">
       <header className="flex items-center justify-between px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
+          className="rounded-xl bg-testing px-3 py-2 text-sm font-semibold text-on-testing"
         >
           ← Board
         </button>
@@ -36,7 +36,7 @@ export function SwitchboardInstall({
       <div className="flex-1 space-y-4 overflow-auto px-4 pb-8">
         <h2 className="text-2xl font-semibold">Manufacturer</h2>
         {locked ? (
-          <div className="rounded-2xl bg-white px-4 py-5 text-center text-xl font-semibold">
+          <div className="rounded-2xl bg-surface px-4 py-5 text-center text-xl font-semibold">
             {frame.manufacturer}
           </div>
         ) : (
@@ -46,7 +46,7 @@ export function SwitchboardInstall({
                 key={opt}
                 type="button"
                 onClick={() => onManufacturer(opt)}
-                className="flex h-20 w-full items-center justify-center rounded-2xl bg-ink text-2xl font-bold text-white"
+                className="flex h-20 w-full items-center justify-center rounded-2xl bg-accent text-2xl font-bold text-accent-ink"
               >
                 {opt}
               </button>
@@ -58,11 +58,11 @@ export function SwitchboardInstall({
           <input
             value={cbsds.cbsdsSerialNumber}
             onChange={(e) => onSerial(e.target.value)}
-            className="w-full rounded-2xl border border-rule bg-white px-4 py-4 text-lg"
+            className="w-full rounded-2xl border border-rule bg-surface px-4 py-4 text-lg"
             placeholder="CBSDS serial"
           />
         </label>
-        <button type="button" onClick={onClose} className="w-full rounded-2xl bg-ink py-4 text-white">
+        <button type="button" onClick={onClose} className="w-full rounded-2xl bg-accent py-4 text-accent-ink">
           Done
         </button>
       </div>

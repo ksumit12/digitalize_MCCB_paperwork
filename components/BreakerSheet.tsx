@@ -69,12 +69,12 @@ export function BreakerSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-teal-50">
+    <div className="fixed inset-0 z-40 flex flex-col bg-canvas">
       <header className="flex items-center justify-between px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button
           type="button"
           onClick={onClose}
-          className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
+          className="rounded-xl bg-testing px-3 py-2 text-sm font-semibold text-on-testing"
         >
           ← Board
         </button>
@@ -153,7 +153,7 @@ export function BreakerSheet({
               }}
               hero
             />
-            <button type="button" onClick={() => setStep("ml")} className="w-full py-2 text-sm text-neutral-500">
+            <button type="button" onClick={() => setStep("ml")} className="w-full py-2 text-sm text-muted">
               Back
             </button>
           </div>
@@ -239,7 +239,7 @@ function AmpStep({
       <button
         type="button"
         onClick={onEmpty}
-        className="flex h-16 w-full items-center justify-center rounded-2xl bg-zinc-200 text-lg font-medium text-zinc-600"
+        className="flex h-16 w-full items-center justify-center rounded-2xl bg-surface-2 text-lg font-medium text-muted"
       >
         Empty — not on this frame
       </button>
@@ -291,7 +291,7 @@ function CaptureStep({
               type="button"
               onClick={() => onModel(m)}
               className={`flex-1 rounded-2xl py-4 text-lg font-semibold ${
-                (model || "2.2") === m ? "bg-ink text-white" : "bg-white"
+                (model || "2.2") === m ? "bg-accent text-accent-ink" : "bg-surface"
               }`}
             >
               ML {m}
@@ -315,14 +315,14 @@ function CaptureStep({
         hero
       />
       {whoLabel ? (
-        <div className="rounded-2xl bg-white p-3">
+        <div className="rounded-2xl bg-surface p-3">
           <HandsPick label={whoLabel} value={who} onChange={setWho} />
         </div>
       ) : null}
       {whoLabel && !initials ? (
         <p className="text-center text-sm text-red-700">Pick who scanned before Confirm.</p>
       ) : null}
-      <button type="button" onClick={onBack} className="w-full py-2 text-sm text-neutral-500">
+      <button type="button" onClick={onBack} className="w-full py-2 text-sm text-muted">
         Back
       </button>
     </div>
@@ -363,10 +363,10 @@ function DoneStep({
   return (
     <div className="space-y-4 pt-6">
       <h2 className="text-2xl font-semibold">{ready ? "Breaker logged" : "Almost there"}</h2>
-      <ul className="space-y-1 rounded-2xl bg-white p-4 text-sm">
+      <ul className="space-y-1 rounded-2xl bg-surface p-4 text-sm">
         <li>
           {breaker.micrologicSettingAmps || "—"}A{" "}
-          <button type="button" onClick={onEditAmp} className="text-neutral-500">
+          <button type="button" onClick={onEditAmp} className="text-muted">
             change
           </button>
         </li>
@@ -377,7 +377,7 @@ function DoneStep({
         {needsShuntTrip(breaker.micrologicSettingAmps) ? (
           <li>Shunt batch {breaker.shuntTripBatchNumber || "—"}</li>
         ) : (
-          <li className="text-neutral-400">No shunt trip (32A)</li>
+          <li className="text-muted">No shunt trip (32A)</li>
         )}
         <li>
           Scanned by {breaker.mccbScannedBy || "—"}
@@ -392,37 +392,37 @@ function DoneStep({
             set ? "bg-emerald-600" : "bg-red-600"
           }`}
         >
-          <span className="h-3 w-3 rounded-full bg-white" />
+          <span className="h-3 w-3 rounded-full bg-surface" />
           {set ? "Micrologic set" : "Set Micrologic"}
         </button>
       ) : null}
       {!ready ? (
-        <button type="button" onClick={onEditSerials} className="w-full rounded-2xl bg-ink py-4 text-white">
+        <button type="button" onClick={onEditSerials} className="w-full rounded-2xl bg-accent py-4 text-accent-ink">
           Finish serials
         </button>
       ) : (
         <>
           {onNext ? (
-            <button type="button" onClick={onNext} className="w-full rounded-2xl bg-ink py-4 text-lg text-white">
+            <button type="button" onClick={onNext} className="w-full rounded-2xl bg-accent py-4 text-lg text-accent-ink">
               Next
             </button>
           ) : null}
           <button
             type="button"
             onClick={onClose}
-            className={`w-full rounded-2xl py-4 text-lg ${onNext ? "border border-rule bg-white" : "bg-ink text-white"}`}
+            className={`w-full rounded-2xl py-4 text-lg ${onNext ? "border border-rule bg-surface" : "bg-accent text-accent-ink"}`}
           >
             ← Board
           </button>
         </>
       )}
-      <button type="button" onClick={onEmpty} className="w-full py-2 text-sm text-zinc-500">
+      <button type="button" onClick={onEmpty} className="w-full py-2 text-sm text-muted">
         Mark empty
       </button>
       {ready ? (
         replaceOpen ? (
-          <div className="space-y-2 rounded-2xl bg-amber-50 p-3">
-            <p className="text-sm font-medium text-amber-950">Broken / replace</p>
+          <div className="space-y-2 rounded-2xl bg-amber-500/15 p-3">
+            <p className="text-sm font-medium text-amber-400">Broken / replace</p>
             <button
               type="button"
               onClick={() => void onReplaceUnit()}
@@ -434,7 +434,7 @@ function DoneStep({
               <button
                 type="button"
                 onClick={() => void onReplaceShunt()}
-                className="w-full rounded-2xl border border-amber-300 bg-white py-3 text-sm font-semibold text-amber-950"
+                className="w-full rounded-2xl border border-amber-300 bg-surface py-3 text-sm font-semibold text-amber-950"
               >
                 Replace shunt only
               </button>
@@ -451,7 +451,7 @@ function DoneStep({
           <button
             type="button"
             onClick={() => setReplaceOpen(true)}
-            className="w-full py-2 text-sm text-neutral-400"
+            className="w-full py-2 text-sm text-muted"
           >
             Broken / replace
           </button>
@@ -475,13 +475,13 @@ function MeggerStep({
   return (
     <div className="space-y-4 pt-2">
       <h2 className="text-2xl font-semibold">Megger / IR</h2>
-      <ul className="rounded-2xl bg-white p-3 text-sm text-neutral-700">
+      <ul className="rounded-2xl bg-surface p-3 text-sm text-ink">
         <li>
           {breaker.micrologicSettingAmps || "—"}A · MCCB {breaker.mccbSerialNumber || "—"}
         </li>
         <li>Micrologic {breaker.microLogicSerialNumber || "—"}</li>
       </ul>
-      <p className="text-sm text-neutral-600">This MCCB ON, others off.</p>
+      <p className="text-sm text-muted">This MCCB ON, others off.</p>
       <IrPassFail
         readings={test.irTest}
         onChange={(irTest) => onTest({ ...test, irTest })}
@@ -497,7 +497,7 @@ function MeggerStep({
           <SignPick value={test.sign} onChange={(v) => onTest({ ...test, sign: v })} placeholder="Sparky sign-off" />
         </div>
       </label>
-      <button type="button" onClick={onBack} className="w-full rounded-2xl bg-ink py-4 text-white">
+      <button type="button" onClick={onBack} className="w-full rounded-2xl bg-accent py-4 text-accent-ink">
         Done
       </button>
     </div>

@@ -18,10 +18,10 @@ export default function HandoverPage({ params }: { params: Promise<{ id: string 
     <Screen title="Frame handover sheet" savedAt={savedAt} backHref={`/frames/${id}/more`} backLabel="Office">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Shepherd Frame ID">
-          <TextInput value={frame.shepherdFrameId} readOnly className="bg-neutral-50" />
+          <TextInput value={frame.shepherdFrameId} readOnly className="bg-surface-2" />
         </Field>
         <Field label="ACTSW Frame ID">
-          <TextInput value={frame.actswFrameId} readOnly className="bg-neutral-50" />
+          <TextInput value={frame.actswFrameId} readOnly className="bg-surface-2" />
         </Field>
         <Field label="Date">
           <TextInput
@@ -86,10 +86,10 @@ export default function HandoverPage({ params }: { params: Promise<{ id: string 
               h.installChecklistComplete
                 ? v === "pass"
                   ? "bg-emerald-600 text-white"
-                  : "bg-zinc-100"
+                  : "bg-surface-2"
                 : v === "fail"
                   ? "bg-red-600 text-white"
-                  : "bg-zinc-100"
+                  : "bg-surface-2"
             }`}
           >
             {v === "pass" ? "QA Passed" : "QA Failed"}
@@ -112,10 +112,10 @@ export default function HandoverPage({ params }: { params: Promise<{ id: string 
               h.electricalTestingComplete
                 ? v === "pass"
                   ? "bg-emerald-600 text-white"
-                  : "bg-zinc-100"
+                  : "bg-surface-2"
                 : v === "fail"
                   ? "bg-red-600 text-white"
-                  : "bg-zinc-100"
+                  : "bg-surface-2"
             }`}
           >
             {v === "pass" ? "QA Passed" : "QA Failed"}

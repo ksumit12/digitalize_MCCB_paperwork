@@ -152,14 +152,14 @@ export function MccbPhotoSheet({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center">
-      <div className="flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-white p-3 sm:h-auto sm:max-h-[100dvh] sm:rounded-2xl">
+      <div className="flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-surface p-3 sm:h-auto sm:max-h-[100dvh] sm:rounded-2xl">
         <div className="flex shrink-0 items-center justify-between">
           <h2 className="font-semibold">{kind === "shunt" ? "Shunt trip" : "MCCB sticker"}</h2>
-          <button type="button" onClick={onClose} className="text-sm text-neutral-500">
+          <button type="button" onClick={onClose} className="text-sm text-muted">
             Close
           </button>
         </div>
-        <p className="mt-1 shrink-0 text-sm text-neutral-600">{hint}</p>
+        <p className="mt-1 shrink-0 text-sm text-muted">{hint}</p>
         {camError ? <p className="shrink-0 text-sm text-red-700">{camError}</p> : null}
 
         <input
@@ -202,12 +202,12 @@ export function MccbPhotoSheet({
         </div>
 
         {raw ? (
-          <pre className="mt-2 max-h-16 shrink-0 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-neutral-50 p-2 font-mono text-xs">
+          <pre className="mt-2 max-h-16 shrink-0 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-surface-2 p-2 font-mono text-xs">
             {raw}
           </pre>
         ) : null}
         {sentUrl ? (
-          <p className="mt-1 shrink-0 truncate text-xs text-neutral-500">
+          <p className="mt-1 shrink-0 truncate text-xs text-muted">
             {sourceNote} → {sentNote}
           </p>
         ) : null}
@@ -222,7 +222,7 @@ export function MccbPhotoSheet({
           type="button"
           disabled={!guess.trim()}
           onClick={() => onSerial(guess.trim().toUpperCase())}
-          className="mt-2 w-full shrink-0 rounded-lg bg-ink py-3 text-white disabled:opacity-40"
+          className="mt-2 w-full shrink-0 rounded-lg bg-accent py-3 text-accent-ink disabled:opacity-40"
         >
           Confirm
         </button>

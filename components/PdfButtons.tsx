@@ -25,7 +25,7 @@ export function PdfButtons({ frame }: { frame: Frame }) {
         type="button"
         disabled={busy}
         onClick={() => void run("download")}
-        className="rounded-2xl bg-ink px-4 py-3.5 text-base text-white"
+        className="rounded-2xl bg-accent px-4 py-3.5 text-base font-semibold text-accent-ink"
       >
         {busy ? "Building…" : "Download PDF"}
       </button>
@@ -33,7 +33,7 @@ export function PdfButtons({ frame }: { frame: Frame }) {
         type="button"
         disabled={busy}
         onClick={() => void run("print")}
-        className="rounded-2xl border border-ink bg-white px-4 py-3.5 text-base"
+        className="rounded-2xl bg-surface px-4 py-3.5 text-base text-ink ring-1 ring-rule"
       >
         Print
       </button>

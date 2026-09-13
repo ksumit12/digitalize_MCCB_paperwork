@@ -5,9 +5,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#111827",
-        paper: "#f7f5f0",
-        rule: "#d6d3cd",
+        ink: "var(--ink)",
+        paper: "var(--paper)",
+        rule: "var(--rule)",
+        canvas: "var(--bg)",
+        surface: "var(--surface)",
+        "surface-2": "var(--surface-2)",
+        accent: "var(--accent)",
+        "accent-ink": "var(--accent-ink)",
+        muted: "var(--muted)",
+        install: "var(--install)",
+        testing: "var(--testing)",
+        done: "var(--done)",
+        "on-install": "var(--on-install)",
+        "on-testing": "var(--on-testing)",
+        "on-done": "var(--on-done)",
+      },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        lift: "var(--shadow-lift)",
+      },
+      borderRadius: {
+        "2.5xl": "1.25rem",
       },
     },
   },

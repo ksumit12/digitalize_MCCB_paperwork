@@ -48,17 +48,17 @@ function NewFrameForm() {
             value={stringKey}
             onChange={(e) => setStringKey(e.target.value)}
             placeholder="String no. e.g. 4"
-            className="w-full rounded-2xl border border-rule bg-white px-4 py-3"
+            className="w-full rounded-2xl border border-rule bg-surface px-4 py-3"
           />
           <div className="space-y-2">
             <div className="grid grid-cols-[2rem_1fr_1fr] gap-2">
               <div />
-              <p className="text-center text-xs font-medium text-neutral-500">L</p>
-              <p className="text-center text-xs font-medium text-neutral-500">R</p>
+              <p className="text-center text-xs font-medium text-muted">L</p>
+              <p className="text-center text-xs font-medium text-muted">R</p>
             </div>
             {STRING_LEVELS.map((n) => (
               <div key={n} className="grid grid-cols-[2rem_1fr_1fr] gap-2">
-                <p className="flex items-center justify-center text-sm font-semibold text-neutral-400">{n}</p>
+                <p className="flex items-center justify-center text-sm font-semibold text-muted">{n}</p>
                 {(["L", "R"] as const).map((hand) => {
                   const id = `${n}${hand}`;
                   const on = stringId === id;
@@ -68,7 +68,7 @@ function NewFrameForm() {
                       type="button"
                       onClick={() => setStringId(id)}
                       className={`h-12 rounded-xl text-lg font-bold ${
-                        on ? "bg-ink text-white" : "bg-white ring-1 ring-rule"
+                        on ? "bg-accent text-accent-ink" : "bg-surface ring-1 ring-rule"
                       }`}
                     >
                       {id}
@@ -89,7 +89,7 @@ function NewFrameForm() {
           onChange={(e) => setInitials(normalizeInitials(e.target.value))}
           placeholder="Initials"
           autoCapitalize="characters"
-          className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg uppercase"
+          className="w-full rounded-2xl border border-rule bg-surface px-4 py-3 text-lg uppercase"
         />
       </div>
 
@@ -101,14 +101,14 @@ function NewFrameForm() {
           onChange={(e) => setTesterInitials(normalizeInitials(e.target.value))}
           placeholder="Initials"
           autoCapitalize="characters"
-          className="w-full rounded-2xl border border-rule bg-white px-4 py-3 text-lg uppercase"
+          className="w-full rounded-2xl border border-rule bg-surface px-4 py-3 text-lg uppercase"
         />
       </div>
 
       <button
         type="button"
         disabled={saving || !slot || !initials.trim() || !stringKey.trim()}
-        className="w-full rounded-2xl bg-ink py-4 text-lg text-white disabled:opacity-30"
+        className="w-full rounded-2xl bg-accent py-4 text-lg text-accent-ink disabled:opacity-30"
         onClick={async () => {
           setSaving(true);
           const existing = await findFrameBySlot(stringKey.trim(), slot);

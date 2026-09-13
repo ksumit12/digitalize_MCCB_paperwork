@@ -33,7 +33,7 @@ export function NextChecklist({
   return (
     <Link
       href={next.href(frameId)}
-      className="block rounded-2xl bg-ink py-4 text-center text-lg font-semibold text-white"
+      className="block rounded-2xl bg-accent py-4 text-center text-lg font-semibold text-accent-ink"
     >
       {next.label}
     </Link>

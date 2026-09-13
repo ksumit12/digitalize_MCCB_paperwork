@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { StringBoard } from "@/components/StringBoard";
-import { HomeMenu } from "@/components/HomeMenu";
+import { StringDial } from "@/components/StringDial";
+import { DesktopNav, HomeMenu } from "@/components/HomeMenu";
 import { SyncBadge } from "@/components/SyncBadge";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   addStringRun,
   archiveStringRun,
@@ -16,7 +18,7 @@ import {
   type StringRun,
 } from "@/lib/db";
 import { currentProjectId } from "@/lib/project";
-import { FRAME_SLOTS, slotFromFrame, stringKeyFromFrame } from "@/lib/stringLayout";
+import { FRAME_SLOTS, slotFromFrame, stringKeyFromFrame, workStatus } from "@/lib/stringLayout";
 import type { Frame } from "@/lib/types";
 
 function uniqueStarted(frames: Frame[]): number {
@@ -57,6 +59,7 @@ export default function HomePage() {
   const [projectName, setProjectName] = useState("");
   const [hello, setHello] = useState("");
   const [error, setError] = useState("");
+  const [dial, setDial] = useState(0);
 
   async function refresh() {
     try {
@@ -76,7 +79,6 @@ export default function HomePage() {
         }
       }
       setFrames(list);
-      // Archiving only touches string rows, so the frames we already have stand.
       setRuns(archived ? await listStringRuns() : stringRuns);
       setReady(true);
     } catch (err) {
@@ -118,36 +120,55 @@ export default function HomePage() {
     .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
 
   const pending = grouped.find((g) => g.key === pendingDelete);
+  const openFrames = frames.filter((f) => workStatus(f) !== "submitted").length;
+  const handed = frames.filter((f) => f.submitted).length;
+  const current = active[dial] ?? active[0];
+
+  useEffect(() => {
+    if (dial > active.length - 1) setDial(Math.max(0, active.length - 1));
+  }, [active.length, dial]);
 
   return (
-    <main className="mx-auto max-w-lg px-4 pb-8 pt-5">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2">
+    <main className="mx-auto max-w-lg px-4 pb-28 pt-5 md:max-w-3xl md:pb-12 lg:max-w-5xl">
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
           <HomeMenu />
-          <div className="home-rise min-w-0 pt-0.5">
-            <p className="text-sm text-neutral-500">{hello || " "}</p>
-            <h1 className="text-3xl font-semibold leading-tight">{projectName || "Project"}</h1>
-            <div className="mt-1.5">
-              <SyncBadge />
-            </div>
+          <DesktopNav />
+        </div>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="tile-press shrink-0 rounded-full bg-accent px-3.5 py-2.5 text-sm font-semibold text-accent-ink"
+          >
+            + String
+          </button>
+        </div>
+      </header>
+
+      <section className="home-rise mb-5 rounded-3xl bg-surface px-5 py-5 ring-1 ring-rule md:flex md:items-end md:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm text-muted">{hello || " "}</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{projectName || "Project"}</h1>
+          <div className="mt-3">
+            <SyncBadge />
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="mt-1 shrink-0 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-white"
-        >
-          Add string
-        </button>
-      </div>
+        <div className="mt-5 grid grid-cols-3 gap-2 md:mt-0 md:w-[20rem]">
+          <HeroStat label="Active" value={active.length} />
+          <HeroStat label="Open" value={openFrames} />
+          <HeroStat label="Handed" value={handed} />
+        </div>
+      </section>
 
       {error ? (
-        <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-800">{error}</p>
+        <p className="mb-4 rounded-2xl bg-red-500/15 p-4 text-sm text-red-300">{error}</p>
       ) : null}
 
       {adding ? (
         <form
-          className="mb-4 flex gap-2"
+          className="home-rise mb-4 flex gap-2 rounded-3xl bg-surface p-2 ring-1 ring-rule"
           onSubmit={async (e) => {
             e.preventDefault();
             const key = newKey.trim();
@@ -163,24 +184,27 @@ export default function HomePage() {
             value={newKey}
             onChange={(e) => setNewKey(e.target.value)}
             placeholder="String no. e.g. 4"
-            className="min-w-0 flex-1 rounded-2xl border border-rule px-4 py-3"
+            className="min-w-0 flex-1 rounded-2xl bg-transparent px-4 py-3 text-ink outline-none"
           />
-          <button type="submit" className="rounded-2xl bg-ink px-4 py-3 text-white">
+          <button type="button" onClick={() => setAdding(false)} className="rounded-2xl px-3 text-sm text-muted">
+            Cancel
+          </button>
+          <button type="submit" className="rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-accent-ink">
             Save
           </button>
         </form>
       ) : null}
 
       {pendingDelete && pending ? (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
-          <p className="text-sm font-semibold text-red-900">Delete string {pendingDelete}?</p>
-          <p className="mt-1 text-sm text-red-800">
+        <div className="mb-4 rounded-3xl bg-red-500/15 p-4">
+          <p className="text-sm font-semibold">Delete string {pendingDelete}?</p>
+          <p className="mt-1 text-sm text-muted">
             This removes the string and all {pending.started} of its frames from this phone. It cannot be undone.
           </p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              className="rounded-xl bg-white px-4 py-2 text-sm font-medium ring-1 ring-rule"
+              className="rounded-full bg-surface px-4 py-2 text-sm font-medium"
               onClick={() => setPendingDelete(null)}
               disabled={deleting}
             >
@@ -188,7 +212,7 @@ export default function HomePage() {
             </button>
             <button
               type="button"
-              className="rounded-xl bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               disabled={deleting}
               onClick={async () => {
                 setDeleting(true);
@@ -205,55 +229,104 @@ export default function HomePage() {
       ) : null}
 
       {!ready ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : active.length === 0 && done.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-rule p-8 text-center text-neutral-600">
-          Add a string.
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {active.map((group) => (
-            <StringBoard
-              key={group.key}
-              stringKey={group.key}
-              frames={group.frames}
-              onDelete={setPendingDelete}
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="home-rise w-full rounded-3xl border border-dashed border-rule bg-surface px-6 py-14 text-center"
+        >
+          <p className="text-lg font-semibold">No strings yet</p>
+          <p className="mt-1 text-sm text-muted">Tap to add the first one.</p>
+        </button>
+      ) : current ? (
+        <>
+          <div className="lg:hidden">
+            <StringDial
+              index={Math.min(dial, Math.max(0, active.length - 1))}
+              onIndex={setDial}
+              items={active.map((group) => (
+                <StringBoard
+                  key={group.key}
+                  stringKey={group.key}
+                  frames={group.frames}
+                  onDelete={setPendingDelete}
+                />
+              ))}
             />
-          ))}
-          {done.length ? (
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => setShowDone((v) => !v)}
-                className="text-sm text-neutral-500"
-              >
-                {showDone ? "Hide" : "Show"} past strings ({done.length})
-              </button>
-              {showDone
-                ? done.map((group) => (
-                    <div key={group.key} className="mt-3 space-y-2">
-                      <StringBoard
-                        stringKey={group.key}
-                        frames={group.frames}
-                        onDelete={setPendingDelete}
-                      />
-                      <button
-                        type="button"
-                        className="text-xs text-neutral-500 underline"
-                        onClick={async () => {
-                          await unarchiveStringRun(group.key);
-                          await refresh();
-                        }}
-                      >
-                        Restore {group.key}
-                      </button>
-                    </div>
-                  ))
-                : null}
-            </div>
-          ) : null}
+          </div>
+          <div className="hidden lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-4">
+            <nav className="sticky top-4 flex flex-col gap-1" aria-label="Strings">
+              {active.map((group, i) => {
+                const on = i === Math.min(dial, active.length - 1);
+                return (
+                  <button
+                    key={group.key}
+                    type="button"
+                    onClick={() => setDial(i)}
+                    className={`rounded-2xl px-3 py-3 text-left ${
+                      on ? "bg-accent text-accent-ink" : "bg-surface text-ink ring-1 ring-rule hover:bg-surface-2"
+                    }`}
+                  >
+                    <p className="font-semibold">String {group.key}</p>
+                    <p className={`text-xs ${on ? "text-accent-ink/70" : "text-muted"}`}>
+                      {group.started}/{FRAME_SLOTS.length} started
+                    </p>
+                  </button>
+                );
+              })}
+            </nav>
+            <StringBoard stringKey={current.key} frames={current.frames} onDelete={setPendingDelete} />
+          </div>
+        </>
+      ) : null}
+
+      {done.length ? (
+        <div className="mt-8">
+          <button
+            type="button"
+            onClick={() => setShowDone((v) => !v)}
+            className="text-sm font-medium text-muted"
+          >
+            {showDone ? "Hide" : "Show"} past strings ({done.length})
+          </button>
+          {showDone
+            ? done.map((group) => (
+                <div key={group.key} className="mt-3 space-y-2">
+                  <StringBoard stringKey={group.key} frames={group.frames} onDelete={setPendingDelete} />
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-accent"
+                    onClick={async () => {
+                      await unarchiveStringRun(group.key);
+                      await refresh();
+                    }}
+                  >
+                    Restore {group.key}
+                  </button>
+                </div>
+              ))
+            : null}
         </div>
-      )}
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        className="tile-press fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-30 flex h-14 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink shadow-lift md:hidden"
+      >
+        <span className="text-lg leading-none">+</span>
+        Add string
+      </button>
     </main>
+  );
+}
+
+function HeroStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl bg-surface-2 px-3 py-3">
+      <p className="text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
+      <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-muted">{label}</p>
+    </div>
   );
 }

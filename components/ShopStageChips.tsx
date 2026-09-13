@@ -26,7 +26,7 @@ export function ShopStageChips({
               onPick(stage);
             }}
             className={`rounded-full px-3 py-2 text-sm font-medium ${
-              on ? "bg-ink text-white" : tap ? "bg-white ring-1 ring-rule" : "bg-zinc-100 text-zinc-400"
+              on ? "bg-accent text-accent-ink" : tap ? "bg-surface text-ink ring-1 ring-rule" : "bg-surface-2 text-muted"
             }`}
           >
             {stageChipLabel(stage)}

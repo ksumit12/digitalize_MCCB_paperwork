@@ -16,6 +16,7 @@ import {
   TargetBars,
   TrendLine,
 } from "@/components/progress/charts";
+import { DesktopNav, HomeMenu } from "@/components/HomeMenu";
 import { SyncBadge } from "@/components/SyncBadge";
 import {
   listFaults,
@@ -75,14 +76,14 @@ function Card({
 }) {
   return (
     <section
-      className={`card-rise rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(20,25,35,0.05)] ring-1 ring-black/[0.06] sm:p-5 ${className}`}
+      className={`card-rise rounded-2xl bg-surface p-4 shadow-card ring-1 ring-rule sm:p-5 ${className}`}
       style={{ animationDelay: `${delay}ms` }}
     >
       {title ? (
         <header className="mb-4">
           <h2 className="text-[15px] font-semibold leading-tight tracking-tight">{title}</h2>
           {subtitle ? (
-            <p className="mt-1 text-xs leading-snug text-neutral-500">{subtitle}</p>
+            <p className="mt-1 text-xs leading-snug text-muted">{subtitle}</p>
           ) : null}
         </header>
       ) : null}
@@ -105,7 +106,7 @@ function DeltaChip({
   return (
     <span
       className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums ${
-        good ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+        good ? "bg-testing/15 text-testing" : "bg-red-500/15 text-red-400"
       }`}
     >
       {rising ? "↑" : "↓"} {Math.abs(delta)}%
@@ -143,25 +144,25 @@ function Kpi({
 }) {
   return (
     <div
-      className="card-rise flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(20,25,35,0.05)] ring-1 ring-black/[0.06]"
+      className="card-rise flex flex-col overflow-hidden rounded-2xl bg-surface shadow-card ring-1 ring-rule"
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className="flex flex-1 flex-col p-4 pb-3">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-[13px] leading-tight text-neutral-600">{label}</p>
+          <p className="text-[13px] leading-tight text-muted">{label}</p>
           <DeltaChip delta={delta} goodWhenDown={goodWhenDown} />
         </div>
         <p className="mt-2.5 text-[28px] font-semibold leading-none tracking-tight tabular-nums">
           {empty ? (
-            <span className="text-neutral-300">—</span>
+            <span className="text-muted">—</span>
           ) : (
             <>
               <CountUp value={value} format={(n) => (decimals ? fmt1(n) : String(Math.round(n)))} />
-              {unit ? <span className="text-lg font-medium text-neutral-400">{unit}</span> : null}
+              {unit ? <span className="text-lg font-medium text-muted">{unit}</span> : null}
             </>
           )}
         </p>
-        <p className="mt-2 flex-1 text-xs leading-snug text-neutral-400">{caption}</p>
+        <p className="mt-2 flex-1 text-xs leading-snug text-muted">{caption}</p>
       </div>
       {spark ? <Sparkline values={spark} color={color} /> : null}
     </div>
@@ -211,10 +212,10 @@ function HeroStat({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] uppercase tracking-wide text-white/45">{label}</p>
+      <p className="text-[11px] uppercase tracking-wide text-muted">{label}</p>
       <p
         className={`mt-1 truncate text-[17px] font-semibold tracking-tight tabular-nums ${
-          tone === "behind" ? "text-rose-300" : tone === "ahead" ? "text-emerald-300" : "text-white"
+          tone === "behind" ? "text-red-400" : tone === "ahead" ? "text-testing" : "text-ink"
         }`}
       >
         {value}
@@ -243,7 +244,7 @@ function TargetEditor({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="rounded-full border border-rule px-3 py-1.5 text-xs text-neutral-600 transition-colors hover:bg-white"
+        className="rounded-full border border-rule px-3 py-1.5 text-xs text-muted transition-colors hover:bg-surface"
       >
         Target {value} a week — change
       </button>
@@ -261,7 +262,7 @@ function TargetEditor({
         setEditing(false);
       }}
     >
-      <label className="text-xs text-neutral-500" htmlFor="weekly-target">
+      <label className="text-xs text-muted" htmlFor="weekly-target">
         Frames a week
       </label>
       <input
@@ -276,7 +277,7 @@ function TargetEditor({
       <button
         type="submit"
         disabled={saving}
-        className="rounded-lg bg-ink px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+        className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-accent-ink disabled:opacity-50"
       >
         {saving ? "Saving…" : "Save"}
       </button>
@@ -362,19 +363,13 @@ export default function ProgressPage() {
     <main className="mx-auto max-w-6xl px-4 pb-16 pt-5">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="home-rise min-w-0">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-neutral-600"
-              aria-label="Back to strings"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-                <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </Link>
-            <h1 className="text-2xl font-semibold tracking-tight">Progress</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <HomeMenu />
+            <DesktopNav />
+            <h1 className="text-2xl font-semibold tracking-tight md:hidden">Progress</h1>
           </div>
-          <p className="mt-1 pl-11 text-sm text-neutral-500">
+          <h1 className="mt-4 hidden text-2xl font-semibold tracking-tight md:block">Progress</h1>
+          <p className="mt-1 text-sm text-muted md:mt-1">
             {projectName ? `${projectName} · ` : ""}
             {stats.rangeLabel}
           </p>
@@ -385,7 +380,7 @@ export default function ProgressPage() {
       {/* Period switch. Changing it remounts the charts below, so everything
           animates in again rather than snapping to new numbers. */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-xl bg-zinc-100 p-1">
+        <div className="inline-flex rounded-xl bg-surface-2 p-1">
           {PERIODS.map((p) => (
             <button
               key={p.id}
@@ -393,7 +388,7 @@ export default function ProgressPage() {
               onClick={() => setPeriod(p.id)}
               aria-pressed={period === p.id}
               className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-                period === p.id ? "bg-white text-ink shadow-sm" : "text-neutral-500"
+                period === p.id ? "bg-surface text-ink shadow-sm" : "text-muted"
               }`}
             >
               {p.label}
@@ -410,39 +405,38 @@ export default function ProgressPage() {
       </div>
 
       {error ? (
-        <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <p className="mb-4 rounded-xl bg-red-500/15 px-4 py-3 text-sm text-red-400">
           {error}
         </p>
       ) : null}
 
       {!ready ? (
-        <p className="text-sm text-neutral-500">Reading this device…</p>
+        <p className="text-sm text-muted">Reading this device…</p>
       ) : (
         <div key={period} className="space-y-4">
           {/* Headline. Dark so it reads as the answer and everything below is
               the explanation. */}
           <section
-            className="card-rise overflow-hidden rounded-2xl bg-ink p-5 text-white"
+            className="card-rise overflow-hidden rounded-2xl bg-surface p-5 text-ink ring-1 ring-rule"
             style={{ animationDelay: "0ms" }}
           >
             <div className="flex flex-wrap items-center gap-6">
               {noTarget ? (
-                <div className="flex h-32 w-32 shrink-0 flex-col items-center justify-center rounded-full border border-white/10">
+                <div className="flex h-32 w-32 shrink-0 flex-col items-center justify-center rounded-full border border-rule">
                   <span className="text-[30px] font-semibold leading-none tracking-tight tabular-nums">
                     {stats.pace.actual}
                   </span>
-                  <span className="mt-1 text-[11px] text-white/55">handed over</span>
+                  <span className="mt-1 text-[11px] text-muted">handed over</span>
                 </div>
               ) : (
                 <AttainmentDial
                   attainment={stats.pace.attainment}
                   actual={stats.pace.actual}
                   target={stats.pace.expected}
-                  onDark
                 />
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] text-white/55">
+                <p className="text-[13px] text-muted">
                   {noTarget
                     ? `Frames handed over ${phrase}`
                     : `Frames handed over ${phrase}, against the pace the target sets`}
@@ -451,13 +445,13 @@ export default function ProgressPage() {
                   {noTarget ? (
                     <>
                       {stats.pace.actual}
-                      <span className="text-white/40"> · nothing was due</span>
+                      <span className="text-muted"> · nothing was due</span>
                     </>
                   ) : (
                     <>
                       {stats.pace.actual} of {fmt1(stats.pace.expected)}
                       {stats.pace.variance < 0 ? (
-                        <span className="text-white/40">
+                        <span className="text-muted">
                           {" "}
                           · {fmt1(-stats.pace.variance)} behind
                         </span>
@@ -467,7 +461,7 @@ export default function ProgressPage() {
                     </>
                   )}
                 </p>
-                <p className="mt-1 text-xs text-white/40">
+                <p className="mt-1 text-xs text-muted">
                   {noTarget
                     ? "The target is set per working day, so a weekend asks for nothing."
                     : period === "day"
@@ -479,10 +473,10 @@ export default function ProgressPage() {
                 <p
                   className={`mt-2.5 max-w-2xl text-sm leading-snug ${
                     behind
-                      ? "text-rose-200"
+                      ? "text-red-400"
                       : forecast.tone === "ahead"
-                        ? "text-emerald-200"
-                        : "text-white/60"
+                        ? "text-testing"
+                        : "text-muted"
                   }`}
                 >
                   {forecast.text}
@@ -490,7 +484,7 @@ export default function ProgressPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-white/10 pt-4 sm:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-4 border-t border-rule pt-4 sm:grid-cols-4">
               <HeroStat label="Current rate" value={`${fmt1(stats.forecast.recentRate)} / wk`} />
               <HeroStat
                 label="Projected finish"
@@ -613,7 +607,7 @@ export default function ProgressPage() {
               {stats.outlook.bestFinish === null ||
               stats.outlook.likelyFinish === null ||
               stats.outlook.worstFinish === null ? (
-                <p className="py-6 text-sm text-neutral-400">
+                <p className="py-6 text-sm text-muted">
                   Nothing has been handed over recently, so there is no range to project from.
                 </p>
               ) : (
@@ -635,7 +629,7 @@ export default function ProgressPage() {
               className="lg:col-span-2"
             >
               <PaceCurve earned={stats.curve.earned} target={stats.curve.target} labels={labels} />
-              <p className="mt-2 text-xs text-neutral-500">
+              <p className="mt-2 text-xs text-muted">
                 {Math.abs(paceGap) < 0.5
                   ? "Level with the target pace over this window."
                   : paceGap > 0
@@ -652,7 +646,7 @@ export default function ProgressPage() {
               delay={360}
             >
               <FlowBars buckets={stats.buckets} />
-              <p className="mt-2 text-xs text-neutral-500">
+              <p className="mt-2 text-xs text-muted">
                 {flowNet === 0
                   ? `Opened and finished the same number ${phrase}.`
                   : flowNet > 0
@@ -672,7 +666,7 @@ export default function ProgressPage() {
                 color={PALETTE.steel}
                 goodWhenDown
               />
-              <p className="mt-2 text-xs text-neutral-500">
+              <p className="mt-2 text-xs text-muted">
                 {wipNow} open now against {fmt1(stats.forecast.recentRate)} finished a week, which is
                 roughly {fmt1(stats.forecast.recentRate > 0 ? wipNow / stats.forecast.recentRate : 0)}{" "}
                 weeks of work in the shop.
@@ -756,7 +750,7 @@ export default function ProgressPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-muted">
                   Nothing open — every frame that exists has been handed over.
                 </p>
               )}
@@ -788,7 +782,7 @@ export default function ProgressPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-muted">
                   No frame has moved between stages yet, so there is nothing to time. This fills in
                   as frames are advanced through the shop.
                 </p>
@@ -813,15 +807,15 @@ export default function ProgressPage() {
                       <p className="truncate text-sm font-medium">
                         String {frame.stringKey} · {frame.slot}
                       </p>
-                      <p className="text-xs text-neutral-500">at {frame.stageLabel}</p>
+                      <p className="text-xs text-muted">at {frame.stageLabel}</p>
                     </Link>
                     <span
                       className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${
                         frame.daysWaiting >= 7
-                          ? "bg-rose-50 text-rose-700"
+                          ? "bg-red-500/15 text-red-400"
                           : frame.daysWaiting >= 3
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-zinc-100 text-neutral-600"
+                            ? "bg-amber-500/15 text-amber-400"
+                            : "bg-surface-2 text-muted"
                       }`}
                     >
                       {frame.daysWaiting} d
@@ -830,7 +824,7 @@ export default function ProgressPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-neutral-500">Nothing open to chase.</p>
+              <p className="text-sm text-muted">Nothing open to chase.</p>
             )}
           </Card>
 
@@ -860,11 +854,11 @@ export default function ProgressPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-neutral-500">No strings on this project yet.</p>
+              <p className="text-sm text-muted">No strings on this project yet.</p>
             )}
           </Card>
 
-          <p className="pt-2 text-center text-xs text-neutral-400">
+          <p className="pt-2 text-center text-xs text-muted">
             Figures cover {stats.rangeLabel} · charts show the last {stats.buckets.length} {noun}s ·
             updated {shortDate(now)}
           </p>

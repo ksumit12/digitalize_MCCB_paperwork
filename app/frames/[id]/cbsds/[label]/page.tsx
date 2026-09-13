@@ -44,7 +44,7 @@ export default function CbsdsPage({
             type="button"
             onClick={() => router.push(`/frames/${id}/cbsds/${l}`)}
             className={`rounded-full px-3 py-1.5 text-sm ${
-              l === cbsdsLabel ? "bg-ink text-white" : "bg-neutral-100"
+              l === cbsdsLabel ? "bg-accent text-accent-ink" : "bg-surface-2"
             }`}
           >
             {l}
@@ -67,7 +67,7 @@ export default function CbsdsPage({
           <TextInput
             value={frame.manufacturer || "—"}
             readOnly
-            className="bg-neutral-50"
+            className="bg-surface-2"
           />
         </Field>
       </div>
@@ -86,13 +86,13 @@ export default function CbsdsPage({
           <li key={b.position}>
             <Link
               href={`/frames/${id}/cbsds/${cbsdsLabel}/breakers/${b.position}`}
-              className="block rounded-xl border border-rule bg-white p-3"
+              className="block rounded-xl border border-rule bg-surface p-3"
             >
               <p className="font-medium">
                 Position {b.position} · {cbsdsLabel}
                 {b.position}
               </p>
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-muted">
                 MCCB {b.mccbSerialNumber || "—"} · ML {b.microLogicSerialNumber || "—"} ·{" "}
                 {b.micrologicSettingAmps || "—"}A
               </p>

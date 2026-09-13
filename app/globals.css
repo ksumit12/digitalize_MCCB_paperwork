@@ -2,13 +2,152 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Dark default: near-black + yellow / mint / violet (fitness + Findex).
+  Light: cool white, same accents — not the old warm beige.
+  Palettes: volt (yellow), pulse (purple), nix (cream on black).
+*/
+:root,
+:root[data-theme="dark"],
+:root[data-theme="dark"][data-palette="volt"] {
+  --bg: #0b0b0d;
+  --surface: #16161a;
+  --surface-2: #1e1e24;
+  --ink: #f4f4f2;
+  --paper: #0b0b0d;
+  --muted: #9b9ba3;
+  --rule: #2a2a32;
+  --accent: #f5c400;
+  --accent-ink: #111114;
+  --install: #f5c400;
+  --testing: #3ddc97;
+  --done: #8b6cff;
+  --on-install: #111114;
+  --on-testing: #111114;
+  --on-done: #ffffff;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 16px 40px rgba(0, 0, 0, 0.28);
+  --shadow-lift: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="light"],
+:root[data-theme="light"][data-palette="volt"] {
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --surface-2: #eceef3;
+  --ink: #111114;
+  --paper: #f3f4f7;
+  --muted: #6b6b76;
+  --rule: #d8dae2;
+  --accent: #e6b000;
+  --accent-ink: #111114;
+  --install: #e6b000;
+  --testing: #12b76a;
+  --done: #6d4cff;
+  --on-install: #111114;
+  --on-testing: #111114;
+  --on-done: #ffffff;
+  --shadow-card: 0 1px 2px rgba(17, 17, 20, 0.04), 0 12px 32px rgba(17, 17, 20, 0.06);
+  --shadow-lift: 0 10px 32px rgba(17, 17, 20, 0.1);
+}
+
+:root[data-theme="dark"][data-palette="pulse"] {
+  --bg: #0a0614;
+  --surface: #16111f;
+  --surface-2: #1e1730;
+  --ink: #f6f3ff;
+  --paper: #0a0614;
+  --muted: #9d96b0;
+  --rule: #2d2540;
+  --accent: #8b6cff;
+  --accent-ink: #ffffff;
+  --install: #8b6cff;
+  --testing: #3ddc97;
+  --done: #f472b6;
+  --on-install: #ffffff;
+  --on-testing: #111114;
+  --on-done: #111114;
+}
+
+:root[data-theme="light"][data-palette="pulse"] {
+  --bg: #f4f2fa;
+  --surface: #ffffff;
+  --surface-2: #ece8f5;
+  --ink: #140f1c;
+  --paper: #f4f2fa;
+  --muted: #6d6680;
+  --rule: #ddd6ec;
+  --accent: #6d4cff;
+  --accent-ink: #ffffff;
+  --install: #6d4cff;
+  --testing: #12b76a;
+  --done: #e11d8f;
+  --on-install: #ffffff;
+  --on-testing: #111114;
+  --on-done: #ffffff;
+}
+
+:root[data-theme="dark"][data-palette="nix"] {
+  --bg: #111214;
+  --surface: #1a1b1e;
+  --surface-2: #242528;
+  --ink: #f4f0e6;
+  --paper: #111214;
+  --muted: #a8a49a;
+  --rule: #2e2f33;
+  --accent: #f3efe4;
+  --accent-ink: #141414;
+  --install: #f3efe4;
+  --testing: #3ddc97;
+  --done: #ef4444;
+  --on-install: #141414;
+  --on-testing: #111114;
+  --on-done: #ffffff;
+}
+
+:root[data-theme="light"][data-palette="nix"] {
+  --bg: #f4f2ec;
+  --surface: #ffffff;
+  --surface-2: #ebe7de;
+  --ink: #161616;
+  --paper: #f4f2ec;
+  --muted: #6f6b62;
+  --rule: #d8d3c8;
+  --accent: #161616;
+  --accent-ink: #f3efe4;
+  --install: #161616;
+  --testing: #12b76a;
+  --done: #ef4444;
+  --on-install: #f3efe4;
+  --on-testing: #111114;
+  --on-done: #ffffff;
+}
+
 html,
 body {
   min-height: 100%;
+  min-height: 100dvh;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 body {
-  @apply bg-paper text-ink antialiased;
+  @apply text-ink antialiased;
+  background: var(--bg);
+  color: var(--ink);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 @keyframes home-rise {
@@ -23,7 +162,63 @@ body {
 }
 
 .home-rise {
-  animation: home-rise 0.5s ease-out both;
+  animation: home-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes home-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheet-backdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.home-fade {
+  animation: home-fade 0.45s ease-out both;
+}
+
+.sheet-in {
+  animation: sheet-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sheet-backdrop {
+  animation: sheet-backdrop 0.25s ease-out both;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+.tile-press {
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.18s ease;
+}
+
+.tile-press:active {
+  transform: scale(0.97);
 }
 
 /* Progress page: charts and cards animate in once on mount. Remounting via a
@@ -134,7 +329,14 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tile-press {
+    transition: none !important;
+  }
+
   .home-rise,
+  .home-fade,
+  .sheet-in,
+  .sheet-backdrop,
   .card-rise,
   .chart-bar,
   .chart-reveal,
@@ -151,6 +353,8 @@ input,
 select,
 textarea {
   font-size: 16px;
+  background-color: var(--surface);
+  color: var(--ink);
 }
 
 @media print {

@@ -62,7 +62,7 @@ export function PassFailPaint({
           <div
             key={row.key}
             data-row-key={row.key}
-            className="flex items-center gap-2 rounded-xl bg-white px-2 py-2"
+            className="flex items-center gap-2 rounded-xl bg-surface px-2 py-2"
           >
             <span className="flex-1 text-sm leading-tight">{row.label.replace(" Pass/Fail", "")}</span>
             {(["pass", "fail"] as const).map((opt) => (
@@ -82,7 +82,7 @@ export function PassFailPaint({
                     ? opt === "pass"
                       ? "bg-emerald-600 text-white"
                       : "bg-red-600 text-white"
-                    : "bg-zinc-100"
+                    : "bg-surface-2"
                 }`}
               >
                 {opt === "pass" ? "Pass" : "Fail"}

@@ -32,7 +32,7 @@ export function SignPick({
                 key={p.initials}
                 type="button"
                 onClick={() => onChange(p.initials || p.name)}
-                className={`rounded-full px-3 py-2 text-sm ${on ? "bg-ink text-white" : "bg-zinc-100"}`}
+                className={`rounded-full px-3 py-2 text-sm ${on ? "bg-accent text-accent-ink" : "bg-surface-2"}`}
               >
                 {label}
               </button>
@@ -44,7 +44,7 @@ export function SignPick({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-2xl border border-rule bg-white px-4 py-3"
+        className="w-full rounded-2xl border border-rule bg-surface px-4 py-3"
       />
     </div>
   );
@@ -74,7 +74,7 @@ export function PeopleChips({
             key={p.initials}
             type="button"
             onClick={() => onPick(p)}
-            className={`rounded-full px-3 py-2 text-sm ${on ? "bg-ink text-white" : "bg-zinc-100"}`}
+            className={`rounded-full px-3 py-2 text-sm ${on ? "bg-accent text-accent-ink" : "bg-surface-2"}`}
           >
             {p.initials}
           </button>
@@ -110,7 +110,7 @@ export function HandsPick({
         onChange={(e) => onChange(normalizeInitials(e.target.value))}
         placeholder="Initials"
         autoCapitalize="characters"
-        className="w-full rounded-xl border border-rule bg-white px-3 py-3 text-lg uppercase"
+        className="w-full rounded-xl border border-rule bg-surface px-3 py-3 text-lg uppercase"
       />
     </div>
   );

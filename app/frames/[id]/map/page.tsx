@@ -15,6 +15,7 @@ import {
 } from "@/lib/breaker";
 import { ShopStageChips } from "@/components/ShopStageChips";
 import { SyncBadge } from "@/components/SyncBadge";
+import Link from "next/link";
 import { frameLabel } from "@/lib/crew";
 import { stagePercent } from "@/lib/shopStage";
 import { useFrame } from "@/lib/useFrame";
@@ -32,7 +33,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
     if (fromUrl) setSlot(fromUrl);
   }, []);
 
-  if (loading) return <p className="p-6 text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <p className="p-6 text-sm text-muted">Loading…</p>;
   if (!frame) return <p className="p-6">Frame not found.</p>;
 
   const phase: FramePhase = frame.phase === "testing" ? "testing" : "installation";
@@ -43,17 +44,45 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   const test = slot ? getTest(frame, slot.label, slot.position) : undefined;
 
   return (
-    <main className="mx-auto max-w-lg px-3 pb-8 pt-4">
+    <main className="mx-auto max-w-lg px-3 pb-28 pt-4 md:max-w-2xl">
+      <div className="mb-3 flex items-center gap-2">
+        <Link
+          href="/"
+          aria-label="Back to strings"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface text-ink ring-1 ring-rule"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+        <p className="text-sm font-medium text-muted">Strings</p>
+      </div>
       <div
         className={`mb-4 rounded-2xl px-4 py-3 ${
-          frame.submitted ? "bg-sky-700 text-white" : testing ? "bg-emerald-700 text-white" : "bg-ink text-white"
+          frame.submitted
+            ? "bg-sky-700 text-white"
+            : testing
+              ? "bg-testing text-on-testing"
+              : "bg-surface text-ink ring-1 ring-rule"
         }`}
       >
         <div className="flex items-start justify-between gap-2">
           <p className="text-xs uppercase tracking-wide opacity-80">
             {frame.submitted ? "Submitted" : testing ? "Testing" : "Installing"}
           </p>
-          <SyncBadge />
+          <div className="flex items-center gap-2">
+            <SyncBadge />
+            <Link
+              href={`/frames/${id}/more`}
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                frame.submitted || testing
+                  ? "bg-white/15 text-white ring-1 ring-white/25"
+                  : "bg-done text-on-done"
+              }`}
+            >
+              Office
+            </Link>
+          </div>
         </div>
         <h1 className="text-xl font-semibold">{name}</h1>
         <p className="text-xs opacity-80">
@@ -61,7 +90,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
           {serialsDoneCount(frame)} / {usedCount(frame) || 0} serials
         </p>
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/25">
-          <span className="block h-full rounded-full bg-white" style={{ width: `${shopPct}%` }} />
+          <span className="block h-full rounded-full bg-surface" style={{ width: `${shopPct}%` }} />
         </div>
         <p className="mt-1 text-[11px] tabular-nums opacity-80">{shopPct}%</p>
       </div>
@@ -76,34 +105,56 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
       ) : null}
 
       {frame.submitted ? (
-        <p className="mb-3 rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          Submitted
-        </p>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <p className="rounded-2xl bg-sky-700/20 px-4 py-3 text-sm text-ink">Submitted</p>
+          <Link
+            href={`/frames/${id}/more`}
+            className="rounded-2xl bg-done py-3 text-center text-sm font-medium text-on-done"
+          >
+            Office
+          </Link>
+        </div>
       ) : testing ? (
         <div className="mb-3 space-y-2">
-          <button
-            type="button"
-            onClick={() => update((f) => ({ ...f, submitted: true }))}
-            className="w-full rounded-2xl bg-sky-600 py-3 text-sm font-medium text-white"
-          >
-            Submit
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => update((f) => ({ ...f, submitted: true }))}
+              className="rounded-2xl bg-sky-600 py-3 text-sm font-medium text-white"
+            >
+              Submit
+            </button>
+            <Link
+              href={`/frames/${id}/more`}
+              className="rounded-2xl bg-done py-3 text-center text-sm font-medium text-on-done"
+            >
+              Office
+            </Link>
+          </div>
           <button
             type="button"
             onClick={() => update((f) => ({ ...f, phase: "installation" }))}
-            className="w-full rounded-2xl border border-rule bg-white py-3 text-sm"
+            className="w-full rounded-2xl border border-rule bg-surface py-3 text-sm"
           >
             Back to installing
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => update((f) => ({ ...f, phase: "testing" }))}
-          className="mb-3 w-full rounded-2xl bg-emerald-700 py-3 text-sm font-medium text-white"
-        >
-          Move to testing
-        </button>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => update((f) => ({ ...f, phase: "testing" }))}
+            className="rounded-2xl bg-emerald-700 py-3 text-sm font-medium text-white"
+          >
+            Move to testing
+          </button>
+          <Link
+            href={`/frames/${id}/more`}
+            className="rounded-2xl bg-done py-3 text-center text-sm font-medium text-on-done"
+          >
+            Office
+          </Link>
+        </div>
       )}
 
       <FrameMap

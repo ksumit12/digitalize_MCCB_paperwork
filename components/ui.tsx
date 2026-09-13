@@ -5,9 +5,9 @@ import type { ReactNode } from "react";
 import { SyncBadge } from "./SyncBadge";
 
 const BACK = {
-  home: "bg-zinc-800 text-white",
-  board: "bg-teal-700 text-white",
-  office: "bg-indigo-800 text-white",
+  home: "bg-surface text-ink ring-1 ring-rule",
+  board: "bg-testing text-on-testing",
+  office: "bg-done text-on-done",
 } as const;
 
 function backTone(href: string): keyof typeof BACK {
@@ -25,7 +25,7 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1">
-      <span className="text-sm font-medium text-neutral-700">{label}</span>
+      <span className="text-sm font-medium text-muted">{label}</span>
       {children}
     </label>
   );
@@ -35,7 +35,7 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full rounded-lg border border-rule bg-white px-3 py-2.5 ${props.className ?? ""}`}
+      className={`w-full rounded-lg border border-rule bg-surface px-3 py-2.5 text-ink ${props.className ?? ""}`}
     />
   );
 }
@@ -54,7 +54,7 @@ export function CheckRow({
   onSign?: (v: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-rule bg-white p-3 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-2 rounded-lg border border-rule bg-surface p-3 sm:flex-row sm:items-center">
       <label className="flex flex-1 items-start gap-3 text-sm">
         <input
           type="checkbox"
@@ -69,7 +69,7 @@ export function CheckRow({
           value={sign ?? ""}
           onChange={(e) => onSign(e.target.value)}
           placeholder="Installer sign"
-          className="w-full rounded-lg border border-rule px-3 py-2 sm:w-40"
+          className="w-full rounded-lg border border-rule bg-surface px-3 py-2 text-ink sm:w-40"
         />
       ) : null}
     </div>
@@ -87,7 +87,7 @@ export function PassFailSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as "pass" | "fail" | "")}
-      className="rounded-lg border border-rule bg-white px-2 py-2"
+      className="rounded-lg border border-rule bg-surface px-2 py-2 text-ink"
     >
       <option value="">—</option>
       <option value="pass">Pass</option>
@@ -114,14 +114,14 @@ export function YesNaRow({
   onSign?: (v: string) => void;
 }) {
   return (
-    <div className="space-y-2 rounded-2xl border border-rule bg-white p-3">
+    <div className="space-y-2 rounded-2xl border border-rule bg-surface p-3">
       <p className="text-base font-medium leading-snug">{label}</p>
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={onYes}
           className={`rounded-2xl py-4 text-lg font-semibold ${
-            ticked && !na ? "bg-emerald-600 text-white" : "bg-zinc-100"
+            ticked && !na ? "bg-testing text-on-testing" : "bg-surface-2 text-ink"
           }`}
         >
           Yes
@@ -130,7 +130,7 @@ export function YesNaRow({
           type="button"
           onClick={onNa}
           className={`rounded-2xl py-4 text-lg font-semibold ${
-            na ? "bg-neutral-700 text-white" : "bg-zinc-100"
+            na ? "bg-surface-2 text-ink ring-1 ring-rule" : "bg-surface-2 text-muted"
           }`}
         >
           N/A
@@ -141,7 +141,7 @@ export function YesNaRow({
           value={sign ?? ""}
           onChange={(e) => onSign(e.target.value)}
           placeholder="Initials"
-          className="w-full rounded-xl border border-rule px-3 py-3"
+          className="w-full rounded-xl border border-rule bg-surface px-3 py-3 text-ink"
         />
       ) : null}
     </div>

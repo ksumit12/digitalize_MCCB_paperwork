@@ -518,7 +518,7 @@ export default function SerialLabPage() {
   return (
     <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
       <h1 className="text-2xl font-semibold">MCCB serial lab</h1>
-      <p className="text-sm text-neutral-600">
+      <p className="text-sm text-muted">
         Snap or upload one frame, then drag a box around the whole lime sticker. That crop is sent to PaddleOCR in the
         browser. First run downloads the models onto this device.
       </p>
@@ -536,13 +536,13 @@ export default function SerialLabPage() {
       />
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => void startCam()} className="rounded-xl bg-ink px-4 py-2 text-white">
+        <button type="button" onClick={() => void startCam()} className="rounded-xl bg-accent px-4 py-2 text-accent-ink">
           Start camera
         </button>
         <button
           type="button"
           onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
-          className="rounded-xl border border-rule bg-white px-4 py-2"
+          className="rounded-xl border border-rule bg-surface px-4 py-2"
         >
           {facing === "user" ? "Front camera" : "Rear camera"}
         </button>
@@ -556,14 +556,14 @@ export default function SerialLabPage() {
         >
           Snap still
         </button>
-        <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-rule bg-white px-4 py-2">
+        <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-rule bg-surface px-4 py-2">
           Upload photo
         </button>
         <button
           type="button"
           onClick={() => void teachFromCrop()}
           disabled={busy || !cropBox}
-          className="rounded-xl bg-ink px-4 py-2 text-white disabled:opacity-40"
+          className="rounded-xl bg-accent px-4 py-2 text-accent-ink disabled:opacity-40"
         >
           {busy ? "Reading…" : "Use this crop"}
         </button>
@@ -574,7 +574,7 @@ export default function SerialLabPage() {
             setHasStill(false);
             setCropBox(null);
           }}
-          className="rounded-xl border border-rule bg-white px-4 py-2"
+          className="rounded-xl border border-rule bg-surface px-4 py-2"
         >
           Back to live
         </button>
@@ -610,18 +610,18 @@ export default function SerialLabPage() {
         />
       ) : null}
 
-      <div className="rounded-2xl bg-white p-4">
-        <p className="text-xs uppercase text-neutral-500">Parsed (1 digit + 3 letters + 7 digits)</p>
+      <div className="rounded-2xl bg-surface p-4">
+        <p className="text-xs uppercase text-muted">Parsed (1 digit + 3 letters + 7 digits)</p>
         <p className="mt-1 text-xl font-semibold">{hits[0] || "no 11-char serial in the text below"}</p>
-        {hits.length > 1 ? <p className="text-sm text-neutral-500">{hits.slice(1).join(" · ")}</p> : null}
-        <p className="mt-4 text-xs uppercase text-neutral-500">What PaddleOCR actually returned</p>
+        {hits.length > 1 ? <p className="text-sm text-muted">{hits.slice(1).join(" · ")}</p> : null}
+        <p className="mt-4 text-xs uppercase text-muted">What PaddleOCR actually returned</p>
         {attempts.length === 0 ? (
-          <p className="mt-1 text-sm text-neutral-500">{busy ? "Running…" : "—"}</p>
+          <p className="mt-1 text-sm text-muted">{busy ? "Running…" : "—"}</p>
         ) : (
           <ul className="mt-2 space-y-3">
             {attempts.map((a) => (
-              <li key={a.label} className="rounded-xl bg-neutral-50 p-3 font-mono text-sm">
-                <p className="text-xs text-neutral-500">
+              <li key={a.label} className="rounded-xl bg-surface-2 p-3 font-mono text-sm">
+                <p className="text-xs text-muted">
                   {a.label} · confidence {a.confidence} · {a.chars} letters/digits
                 </p>
                 {a.error ? <p className="mt-1 text-red-700">error: {a.error}</p> : null}
@@ -634,13 +634,13 @@ export default function SerialLabPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         {steps.map((s) => (
-          <figure key={s.title} className="rounded-2xl bg-white p-3">
+          <figure key={s.title} className="rounded-2xl bg-surface p-3">
             <figcaption className="mb-2 text-sm font-medium">
               {s.title}
-              <span className="block text-xs font-normal text-neutral-500">{s.note}</span>
+              <span className="block text-xs font-normal text-muted">{s.note}</span>
             </figcaption>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={s.url} alt={s.title} className="w-full rounded-lg border border-rule bg-neutral-100" />
+            <img src={s.url} alt={s.title} className="w-full rounded-lg border border-rule bg-surface-2" />
           </figure>
         ))}
       </div>

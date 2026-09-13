@@ -39,7 +39,7 @@ export function FrameMap({
               type="button"
               onClick={() => onBoard(label)}
               className={`flex h-[4.5rem] w-11 shrink-0 flex-col items-center justify-center rounded-xl text-lg font-bold ${
-                boardDone ? "bg-emerald-600 text-white" : "bg-ink text-white"
+                boardDone ? "bg-emerald-600 text-white" : "bg-surface text-ink ring-1 ring-rule"
               }`}
             >
               {label}
@@ -61,8 +61,8 @@ export function FrameMap({
                       onClick={() => onSlot(label, b.position)}
                       className={[
                         "relative aspect-square w-full rounded-lg text-[11px] font-semibold",
-                        !used && "bg-zinc-200 text-zinc-400",
-                        used && !done && colors && `bg-white ring-2 ${colors.ring} ${colors.label}`,
+                        !used && "bg-surface-2 text-muted",
+                        used && !done && colors && `bg-surface ring-2 ${colors.ring} ${colors.label}`,
                         used && done && colors && `${colors.fill} text-white`,
                       ]
                         .filter(Boolean)
@@ -90,9 +90,9 @@ export function FrameMap({
           </div>
         );
       })}
-      <div className="flex flex-wrap gap-3 px-1 text-[11px] text-neutral-500">
+      <div className="flex flex-wrap gap-3 px-1 text-[11px] text-muted">
         <span className="flex items-center gap-1">
-          <i className="inline-block h-3 w-3 rounded bg-zinc-200" /> empty
+          <i className="inline-block h-3 w-3 rounded bg-surface-2" /> empty
         </span>
         <span className="flex items-center gap-1">
           <i className="inline-block h-3 w-3 rounded bg-sky-500" /> 32A
