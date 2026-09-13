@@ -8,4 +8,21 @@ lib/pdf.ts.bak
 serials-inbox/*
 !serials-inbox/.gitkeep
 /data
-.env*.local
+
+# Every env file except the placeholder example. The old rule only matched
+# names ending in .local, so a plain .env would have been committed.
+.env
+.env.*
+!.env.example
+
+# Credentials and keys, wherever they land
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+secrets.yaml
+.neon
+
+.DS_Store
+

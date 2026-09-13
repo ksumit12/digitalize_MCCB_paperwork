@@ -1,0 +1,58 @@
+#!/bin/sh
+# Blocks commits that contain credentials. Enabled by:
+#   git config core.hooksPath .githooks
+# Bypass once, if you are certain the match is a false positive:
+#   git commit --no-verify
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+fail=0
+note() {
+  [ "$fail" -eq 0 ] && printf '\nCommit blocked: possible credentials staged.\n\n'
+  fail=1
+  printf '  %s\n' "$1"
+}
+
+# 1. Env files must never be committed, whatever they are named.
+for file in $staged; do
+  case "$file" in
+    .env.example) ;;
+    .env|.env.*|*/.env|*/.env.*)
+      note "$file is an env file; keep it local and put the value in Vercel instead."
+      ;;
+    *.pem|*.key|*.p12|*.pfx)
+      note "$file looks like a private key."
+      ;;
+  esac
+done
+
+# 2. Credential-shaped content in any staged file. Passed via -e because the
+#    private-key pattern starts with dashes, which grep would otherwise read
+#    as command-line options.
+SECRETS='postgres(ql)?://[^ "'"'"']*:[^ "'"'"'@]{6,}@|npg_[A-Za-z0-9_]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+PLACEHOLDERS='USER:PASSWORD|YOUR_|example\.com|\*\*\*\*'
+
+for file in $staged; do
+  case "$file" in
+    .env.example|docs/*|.githooks/*|package-lock.json) continue ;;
+  esac
+  [ -f "$file" ] || continue
+
+  # Added lines only, with content preserved exactly: dropping a leading
+  # character here would stop "-----BEGIN ... KEY-----" from matching.
+  if git diff --cached -U0 -- "$file" \
+    | grep '^+' | grep -v '^+++' | cut -c2- \
+    | grep -Ei -e "$SECRETS" \
+    | grep -Eiv -e "$PLACEHOLDERS" \
+    | grep -q .
+  then
+    note "$file contains something shaped like a live credential."
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  printf '\nNothing was committed. See docs/secrets.md.\n\n'
+  exit 1
+fi
+exit 0
