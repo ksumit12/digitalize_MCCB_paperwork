@@ -147,6 +147,12 @@ export function SyncStatsPanel() {
         tone={stats?.hosted === false ? "bad" : "good"}
       />
       <Line
+        label="Access"
+        value={stats?.gated == null ? "…" : stats.gated ? "Passcode" : "OPEN"}
+        hint={stats?.gated === false ? "Anyone with the URL can edit" : undefined}
+        tone={stats?.gated === false ? "bad" : "good"}
+      />
+      <Line
         label="Round trip to server"
         value={ms(stats?.roundTripMs)}
         tone={latencyTone(stats?.roundTripMs ?? null)}

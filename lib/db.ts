@@ -131,10 +131,26 @@ function deviceId(): string {
   return id;
 }
 
+let sentToLogin = false;
+
+/**
+ * A 401 means the passcode session lapsed, not that the link is down. Retrying
+ * forever would just look like a broken sync, so hand the person the door.
+ */
+function handleLocked(status: number): boolean {
+  if (status !== 401) return false;
+  if (typeof window === "undefined" || sentToLogin) return true;
+  sentToLogin = true;
+  const back = `${window.location.pathname}${window.location.search}`;
+  window.location.href = `/login?next=${encodeURIComponent(back)}`;
+  return true;
+}
+
 async function apiGet<T>(action: string, extra: Record<string, string> = {}): Promise<T | null> {
   try {
     const params = new URLSearchParams({ action, projectId: currentProjectId(), ...extra });
     const res = await fetch(`/api/data?${params.toString()}`, { cache: "no-store" });
+    if (handleLocked(res.status)) return null;
     const data = await res.json();
     markReachable(res.ok);
     if (!res.ok) return null;
@@ -152,6 +168,7 @@ async function apiPost(body: Record<string, unknown>): Promise<boolean> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...body, origin: deviceId() }),
     });
+    if (handleLocked(res.status)) return false;
     markReachable(res.ok);
     return res.ok;
   } catch {
@@ -171,6 +188,7 @@ async function apiPostJson<T>(body: Record<string, unknown>): Promise<{
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...body, origin: deviceId() }),
     });
+    if (handleLocked(res.status)) return { ok: false, status: res.status, data: null };
     const data = (await res.json()) as T;
     // A 409 is the server correctly rejecting a stale hole, not a broken link.
     markReachable(res.ok || res.status === 409);
@@ -479,6 +497,8 @@ export function onSyncStatus(handler: () => void) {
 export type SyncStats = {
   /** True when this device is talking to Neon, false for a local SQLite file. */
   hosted: boolean | null;
+  /** False means the deployment is answering anyone who knows the URL. */
+  gated: boolean | null;
   /** Server clock minus this device's clock, in ms. Near zero is healthy. */
   clockOffsetMs: number | null;
   roundTripMs: number | null;
@@ -513,6 +533,7 @@ export type SyncStats = {
 
 const stats: SyncStats = {
   hosted: null,
+  gated: null,
   clockOffsetMs: null,
   roundTripMs: null,
   upstream: {
@@ -605,11 +626,17 @@ function recordChangeLag(serverStampedAt: string | undefined) {
 
 async function pingServerClock() {
   const sentAt = Date.now();
-  const data = await apiGet<{ cursor: number; now: string; hosted: boolean }>("cursor");
+  const data = await apiGet<{
+    cursor: number;
+    now: string;
+    hosted: boolean;
+    protected: boolean;
+  }>("cursor");
   if (!data?.now) return data;
   const roundTrip = Date.now() - sentAt;
   stats.roundTripMs = roundTrip;
   stats.hosted = data.hosted;
+  stats.gated = data.protected;
   stats.clockOffsetMs = Date.parse(data.now) - (sentAt + Math.round(roundTrip / 2));
   return data;
 }

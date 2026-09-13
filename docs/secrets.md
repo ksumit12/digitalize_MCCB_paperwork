@@ -4,7 +4,7 @@
 
 | Where | What | Committed? |
 | --- | --- | --- |
-| Vercel project environment variables | the production `DATABASE_URL` | no |
+| Vercel project environment variables | production `DATABASE_URL` and `APP_PASSCODE` | no |
 | `.env.local` on your machine | your local `DATABASE_URL` | no, gitignored |
 | `.env.example` | placeholders only | yes |
 
@@ -70,13 +70,51 @@ Do this if a URL is ever pasted into a chat, a screenshot, an issue, or a log.
 The old password stops working immediately, so expect writes to fail between
 steps 1 and 3.
 
-## Known exposure: the API has no authentication
+## The crew passcode
 
-`/api/data` accepts any request. Anyone who knows the deployment URL can read,
-overwrite, or delete every frame, hole, and fault in the shared database. No
-password is needed and nothing is logged about who did it.
+`APP_PASSCODE` gates the whole app, including `/api/data`. Without it that route
+accepted any request, so anyone who knew the deployment URL could read,
+overwrite, or delete every frame and hole.
 
-The connection string being safe does not help here, because this route is the
-database, reachable over the public internet. Treat the deployment URL itself
-as the only thing standing between your data and the world until a real check
-exists in front of this route.
+Set it in Vercel, then redeploy:
+
+```
+APP_PASSCODE=<something the crew can type on a phone>
+```
+
+**If `APP_PASSCODE` is not set, the gate is off and the app is open.** That is
+deliberate: shipping a locked-out app to a crew already mid-shift would be worse
+than the exposure. The sync stats panel shows `Access: OPEN` in red whenever
+this is the case, so it cannot go unnoticed.
+
+How it works. `middleware.ts` checks a signed cookie on every request except
+`/login`, `/api/auth`, and static assets. `/login` takes the passcode, and
+`/api/auth` verifies it and sets an HttpOnly, SameSite=Lax cookie that lasts 90
+days. The cookie carries its own expiry plus an HMAC over it keyed by the
+passcode, so no session is stored server-side, a tampered expiry fails the
+signature check, and changing the passcode invalidates every existing cookie.
+
+Page requests without a valid cookie redirect to `/login`; API requests get a
+401, which the sync loop treats as a locked door rather than a dead network and
+sends the person to `/login` instead of retrying forever.
+
+What this is and is not. It keeps strangers out. It does not tell you who did
+what, since everyone shares one passcode and writes are still attributed only
+by the initials typed into a frame. Anyone who leaves the crew keeps working
+access until the passcode is rotated.
+
+To rotate it, change `APP_PASSCODE` in Vercel and redeploy. Every device will
+ask for the new one, because the old cookies no longer verify.
+
+To sign a device out:
+
+```sh
+curl -X POST https://<your-app>/api/auth -H 'content-type: application/json' \
+  -d '{"action":"signOut"}'
+```
+
+## Still open
+
+Rate limiting on `/api/auth` is a fixed 600 ms delay per wrong attempt, which
+slows guessing but does not stop a determined attacker who knows the URL. If the
+passcode is short, make it longer rather than relying on that delay.

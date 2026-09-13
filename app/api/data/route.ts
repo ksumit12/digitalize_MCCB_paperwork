@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { gateEnabled } from "@/lib/auth";
 import { DEFAULT_PROJECT_ID } from "@/lib/project";
 import {
   storeAddFault,
@@ -48,7 +49,9 @@ export async function GET(req: Request) {
       const frame = await storeGetFrame(url.searchParams.get("id") || "");
       return NextResponse.json(frame ?? null);
     }
-    if (action === "cursor") return NextResponse.json(await storeCursor());
+    if (action === "cursor") {
+      return NextResponse.json({ ...(await storeCursor()), protected: gateEnabled() });
+    }
     if (action === "changes") {
       return NextResponse.json(
         await storeChanges(
