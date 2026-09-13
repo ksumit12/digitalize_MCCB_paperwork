@@ -244,6 +244,7 @@ function queueFrame(id: string) {
   if (!box.frames.includes(id)) box.frames.push(id);
   box.deletedFrames = box.deletedFrames.filter((x) => x !== id);
   writeOutbox(box);
+  markQueued(`frame:${id}`);
   scheduleFlush();
 }
 
@@ -251,6 +252,7 @@ function queueBreaker(id: string) {
   const box = readOutbox();
   if (!box.breakers.includes(id)) box.breakers.push(id);
   writeOutbox(box);
+  markQueued(`breaker:${id}`);
   scheduleFlush();
 }
 
@@ -451,9 +453,146 @@ export function onSyncStatus(handler: () => void) {
   return () => window.removeEventListener(STATUS_EVENT, handler);
 }
 
+/* ------------------------------------------------------------------------- *
+ * TEMPORARY DIAGNOSTICS — remove this block and components/SyncStatsPanel.tsx
+ * together when the sync timings are no longer interesting.
+ * ------------------------------------------------------------------------- */
+
+export type SyncStats = {
+  /** True when this device is talking to Neon, false for a local SQLite file. */
+  hosted: boolean | null;
+  /** Server clock minus this device's clock, in ms. Near zero is healthy. */
+  clockOffsetMs: number | null;
+  roundTripMs: number | null;
+  upstream: {
+    /** Wall time of the last flush, queue drain included. */
+    lastFlushMs: number | null;
+    /** Queued on this device until Neon accepted it. The number that matters. */
+    lastWriteLatencyMs: number | null;
+    slowestWriteMs: number | null;
+    accepted: number;
+    rejected: number;
+    conflicts: number;
+    lastAt: number | null;
+  };
+  downstream: {
+    /** Wall time of the last incremental change-feed request. */
+    lastPollMs: number | null;
+    rowsLastPoll: number;
+    polls: number;
+    emptyPolls: number;
+    /** Written on the server until applied here, corrected for clock offset. */
+    lastChangeLagMs: number | null;
+    lastChangeAt: number | null;
+    lastReconcileMs: number | null;
+    lastReconcileAt: number | null;
+    cursor: number | null;
+  };
+};
+
+const stats: SyncStats = {
+  hosted: null,
+  clockOffsetMs: null,
+  roundTripMs: null,
+  upstream: {
+    lastFlushMs: null,
+    lastWriteLatencyMs: null,
+    slowestWriteMs: null,
+    accepted: 0,
+    rejected: 0,
+    conflicts: 0,
+    lastAt: null,
+  },
+  downstream: {
+    lastPollMs: null,
+    rowsLastPoll: 0,
+    polls: 0,
+    emptyPolls: 0,
+    lastChangeLagMs: null,
+    lastChangeAt: null,
+    lastReconcileMs: null,
+    lastReconcileAt: null,
+    cursor: null,
+  },
+};
+
+// When each queued item entered the outbox, so upstream latency is measured
+// from the moment of the scan rather than from the start of the flush.
+const queuedAt = new Map<string, number>();
+
+function markQueued(key: string) {
+  if (!queuedAt.has(key)) queuedAt.set(key, Date.now());
+}
+
+function markAccepted(key: string) {
+  const started = queuedAt.get(key);
+  queuedAt.delete(key);
+  stats.upstream.accepted += 1;
+  stats.upstream.lastAt = Date.now();
+  if (started == null) return;
+  const took = Date.now() - started;
+  stats.upstream.lastWriteLatencyMs = took;
+  stats.upstream.slowestWriteMs = Math.max(stats.upstream.slowestWriteMs ?? 0, took);
+}
+
+export function getSyncStats(): SyncStats {
+  return {
+    ...stats,
+    upstream: { ...stats.upstream },
+    downstream: { ...stats.downstream, cursor: readCursor() },
+  };
+}
+
+export function resetSyncStats() {
+  stats.upstream = {
+    lastFlushMs: null,
+    lastWriteLatencyMs: null,
+    slowestWriteMs: null,
+    accepted: 0,
+    rejected: 0,
+    conflicts: 0,
+    lastAt: null,
+  };
+  stats.downstream = {
+    ...stats.downstream,
+    lastPollMs: null,
+    rowsLastPoll: 0,
+    polls: 0,
+    emptyPolls: 0,
+    lastChangeLagMs: null,
+    lastChangeAt: null,
+  };
+  notifyStatus();
+}
+
+/** Server time as this device best understands it, using the measured offset. */
+function serverNow(): number {
+  return Date.now() + (stats.clockOffsetMs ?? 0);
+}
+
+function recordChangeLag(serverStampedAt: string | undefined) {
+  if (!serverStampedAt) return;
+  const written = Date.parse(serverStampedAt);
+  if (!Number.isFinite(written)) return;
+  stats.downstream.lastChangeLagMs = Math.max(0, serverNow() - written);
+  stats.downstream.lastChangeAt = Date.now();
+}
+
+async function pingServerClock() {
+  const sentAt = Date.now();
+  const data = await apiGet<{ cursor: number; now: string; hosted: boolean }>("cursor");
+  if (!data?.now) return data;
+  const roundTrip = Date.now() - sentAt;
+  stats.roundTripMs = roundTrip;
+  stats.hosted = data.hosted;
+  stats.clockOffsetMs = Date.parse(data.now) - (sentAt + Math.round(roundTrip / 2));
+  return data;
+}
+
 async function flushOutbox() {
   if (flushing || typeof window === "undefined") return;
   flushing = true;
+  const flushStartedAt = Date.now();
   try {
     const box = readOutbox();
     const hadWork =
@@ -477,8 +616,10 @@ async function flushOutbox() {
       const saved = await apiPostJson<{ ok: boolean; frame?: Frame }>({ action: "saveFrame", frame });
       if (!saved.ok || !saved.data?.frame) {
         next.frames.push(id);
+        stats.upstream.rejected += 1;
         continue;
       }
+      markAccepted(`frame:${id}`);
       // Adopt the server's seq and clock so the feed can tell later whether a
       // remote edit is actually newer than what this device already has.
       const current = await db.frames.get(id);
@@ -498,13 +639,17 @@ async function flushOutbox() {
       >({ action: "saveBreaker", breaker });
       if (result.status === 409 && result.data && "conflict" in result.data && result.data.conflict) {
         await db.breakers.put(result.data.conflict);
+        stats.upstream.conflicts += 1;
+        queuedAt.delete(`breaker:${id}`);
         continue;
       }
       if (!result.ok || !result.data || !("breaker" in result.data) || !result.data.breaker) {
         next.breakers.push(id);
+        stats.upstream.rejected += 1;
         continue;
       }
       await db.breakers.put(result.data.breaker);
+      markAccepted(`breaker:${id}`);
     }
     for (const row of box.deletedStrings) {
       if (!(await apiPost({ action: "deleteString", projectId: row.projectId, key: row.key }))) {
@@ -530,6 +675,7 @@ async function flushOutbox() {
     writeOutbox(remaining);
     if (countPending(remaining) === 0 && reachable) lastSyncedAt = new Date().toISOString();
     if (hadWork) {
+      stats.upstream.lastFlushMs = Date.now() - flushStartedAt;
       notifySync();
       notifyStatus();
     }
@@ -614,12 +760,25 @@ async function pullChanges(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const since = readCursor();
   if (since == null) {
-    const boot = await apiGet<{ cursor: number }>("cursor");
+    const boot = await pingServerClock();
     if (boot) writeCursor(boot.cursor);
     return false;
   }
+  const pollStartedAt = Date.now();
   const data = await apiGet<ChangeFeed>("changes", { since: String(since) });
   if (!data) return false;
+
+  stats.downstream.polls += 1;
+  stats.downstream.lastPollMs = Date.now() - pollStartedAt;
+  stats.downstream.rowsLastPoll =
+    data.frames.length + data.breakers.length + data.strings.length + data.faults.length;
+  if (stats.downstream.rowsLastPoll === 0) stats.downstream.emptyPolls += 1;
+  // Newest server stamp in this batch, so the lag reflects the freshest edit.
+  const freshest = [...data.breakers, ...data.frames]
+    .map((row) => row.updatedAt)
+    .sort()
+    .pop();
+  recordChangeLag(freshest);
 
   let changed = false;
   const box = readOutbox();
@@ -666,8 +825,11 @@ export function startBackgroundSync() {
           lastFullPull = now;
           // Snapshot the cursor first: anything written while the reconcile runs
           // then still comes back through the feed instead of being skipped.
-          const boot = await apiGet<{ cursor: number }>("cursor");
+          const boot = await pingServerClock();
+          const reconcileStartedAt = Date.now();
           changed = await pullRemote();
+          stats.downstream.lastReconcileMs = Date.now() - reconcileStartedAt;
+          stats.downstream.lastReconcileAt = Date.now();
           if (boot) writeCursor(boot.cursor);
         } else {
           changed = await pullChanges();

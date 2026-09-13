@@ -15,6 +15,7 @@ import {
 } from "@/lib/breaker";
 import { ShopStageChips } from "@/components/ShopStageChips";
 import { SyncBadge } from "@/components/SyncBadge";
+import { SyncStatsPanel } from "@/components/SyncStatsPanel";
 import { frameLabel } from "@/lib/crew";
 import { stagePercent } from "@/lib/shopStage";
 import { useFrame } from "@/lib/useFrame";
@@ -192,6 +193,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
           onClose={() => setBoard(null)}
         />
       ) : null}
+      <SyncStatsPanel />
     </main>
   );
 }

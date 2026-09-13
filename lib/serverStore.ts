@@ -483,8 +483,16 @@ export type ChangeFeed = {
 
 const CHANGE_PAGE = 400;
 
-export async function storeCursor(): Promise<{ cursor: number }> {
-  return { cursor: await currentSeq(await getDriver()) };
+export async function storeCursor(): Promise<{ cursor: number; now: string; hosted: boolean }> {
+  const started = Date.now();
+  const cursor = await currentSeq(await getDriver());
+  return {
+    cursor,
+    // Lets a device measure its own clock skew against the shared database
+    // instead of guessing, and prove which database it is actually talking to.
+    now: new Date(started + Math.round((Date.now() - started) / 2)).toISOString(),
+    hosted: Boolean(hostedUrl()) || Boolean(process.env.VERCEL),
+  };
 }
 
 export async function storeChanges(since: number): Promise<ChangeFeed> {

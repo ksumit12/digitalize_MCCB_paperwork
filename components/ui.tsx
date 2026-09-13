@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SyncBadge } from "./SyncBadge";
+import { SyncStatsPanel } from "./SyncStatsPanel";
 
 const BACK = {
   home: "bg-zinc-800 text-white",
@@ -175,6 +176,7 @@ export function Screen({
         <SyncBadge />
       </div>
       {children}
+      <SyncStatsPanel />
     </main>
   );
 }
