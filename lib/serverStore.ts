@@ -267,11 +267,19 @@ function num(v: unknown): number {
 // pulls with `seq > cursor` can never arrive out of order the way wall-clock
 // timestamps do when a phone and the server disagree about the time.
 async function nextSeq(d: Driver): Promise<number> {
-  const row = await d.get("UPDATE sync_seq SET value = value + 1 WHERE id = 1 RETURNING value");
-  if (row) return num(row.value);
-  await d.run("UPDATE sync_seq SET value = value + 1 WHERE id = 1");
-  const fallback = await d.get("SELECT value FROM sync_seq WHERE id = 1");
-  return num(fallback?.value);
+  const [seq] = await reserveSeq(d, 1);
+  return seq;
+}
+
+/** Reserve `n` sequence numbers in one statement. A 70-hole frame used to pay 70 round trips. */
+async function reserveSeq(d: Driver, n: number): Promise<number[]> {
+  if (n <= 0) return [];
+  const row = await d.get("UPDATE sync_seq SET value = value + ? WHERE id = 1 RETURNING value", [n]);
+  const last = row
+    ? num(row.value)
+    : (await d.run("UPDATE sync_seq SET value = value + ? WHERE id = 1", [n]),
+      num((await d.get("SELECT value FROM sync_seq WHERE id = 1"))?.value));
+  return Array.from({ length: n }, (_, i) => last - n + 1 + i);
 }
 
 async function currentSeq(d: Driver): Promise<number> {
@@ -411,9 +419,9 @@ export async function storeListFrames(projectId: string): Promise<Frame[]> {
     "SELECT * FROM frames WHERE project_id = ? AND deleted = 0 ORDER BY updated_at DESC",
     [projectId],
   );
-  const frames = [];
-  for (const row of rows) frames.push(await hydrateFromDb(d, paperworkFrame(row)));
-  return frames;
+  // Paperwork only. Holes travel as their own rows, so hydrating each frame
+  // here used to re-query every breaker and ship the same payload twice.
+  return rows.map(paperworkFrame);
 }
 
 export async function storeListBreakers(projectId: string): Promise<BreakerRow[]> {
@@ -470,8 +478,10 @@ async function saveFrameWith(d: Driver, frame: Frame, origin?: string): Promise<
   );
   const existing = await d.get("SELECT id FROM breakers WHERE frame_id = ?", [next.id]);
   if (existing) return next;
-  for (const b of explodeBreakers(next)) {
-    await upsertBreaker(d, { ...b, rev: 0, seq: await nextSeq(d) }, origin);
+  const holes = explodeBreakers(next);
+  const seqs = await reserveSeq(d, holes.length);
+  for (let i = 0; i < holes.length; i += 1) {
+    await upsertBreaker(d, { ...holes[i], rev: 0, seq: seqs[i] }, origin);
   }
   return next;
 }
@@ -530,6 +540,7 @@ async function saveBreakerWith(
   d: Driver,
   incoming: BreakerRow,
   origin?: string,
+  seq?: number,
 ): Promise<{ ok: true; breaker: BreakerRow } | { ok: false; conflict: BreakerRow }> {
   const now = new Date().toISOString();
   const current = await d.get("SELECT * FROM breakers WHERE id = ?", [incoming.id]);
@@ -538,7 +549,7 @@ async function saveBreakerWith(
     return { ok: false, conflict: rowToBreaker(current) };
   }
   const nextRev = (current ? num(current.rev) : 0) + 1;
-  const row: BreakerRow = { ...incoming, updatedAt: now, rev: nextRev, seq: await nextSeq(d) };
+  const row: BreakerRow = { ...incoming, updatedAt: now, rev: nextRev, seq: seq ?? (await nextSeq(d)) };
   await upsertBreaker(d, row, origin);
   return { ok: true, breaker: row };
 }
@@ -564,9 +575,12 @@ export async function storeSaveBatch(input: BatchInput): Promise<BatchResult> {
   for (const frame of input.frames ?? []) {
     frames.push(await saveFrameWith(d, frame, input.origin));
   }
+  const incoming = input.breakers ?? [];
+  const seqs = await reserveSeq(d, incoming.length);
   const breakers: BatchResult["breakers"] = [];
-  for (const breaker of input.breakers ?? []) {
-    const result = await saveBreakerWith(d, breaker, input.origin);
+  for (let i = 0; i < incoming.length; i += 1) {
+    const breaker = incoming[i];
+    const result = await saveBreakerWith(d, breaker, input.origin, seqs[i]);
     breakers.push(
       result.ok
         ? { id: breaker.id, ok: true, row: result.breaker }
@@ -731,17 +745,9 @@ export async function storeFindFrameBySlot(
 export async function storeListInstallers(): Promise<Installer[]> {
   const d = await getDriver();
   const people = await d.all("SELECT initials, name FROM installers");
-  const breakers = await d.all("SELECT scanned_by FROM breakers");
-  const used = new Map<string, number>();
-  for (const b of breakers) {
-    const key = str(b.scanned_by).trim().toUpperCase();
-    if (key) used.set(key, (used.get(key) || 0) + 1);
-  }
   return people
     .map((p) => ({ initials: str(p.initials), name: str(p.name) }))
-    .sort(
-      (a, b) => (used.get(b.initials) || 0) - (used.get(a.initials) || 0) || a.initials.localeCompare(b.initials),
-    );
+    .sort((a, b) => a.initials.localeCompare(b.initials));
 }
 
 export async function storeSaveInstaller(installer: Installer): Promise<void> {

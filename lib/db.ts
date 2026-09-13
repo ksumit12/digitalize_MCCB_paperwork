@@ -316,7 +316,6 @@ function queueFrame(id: string) {
   if (!box.frames.includes(id)) box.frames.push(id);
   box.deletedFrames = box.deletedFrames.filter((x) => x !== id);
   writeOutbox(box);
-  markQueued(`frame:${id}`);
   scheduleFlush();
 }
 
@@ -324,7 +323,6 @@ function queueBreaker(id: string) {
   const box = readOutbox();
   if (!box.breakers.includes(id)) box.breakers.push(id);
   writeOutbox(box);
-  markQueued(`breaker:${id}`);
   scheduleFlush();
 }
 
@@ -393,6 +391,7 @@ let flushing = false;
 let syncStarted = false;
 let tickInFlight = false;
 let tickQueued = false;
+let haveBreakerSnapshot = false;
 
 const SEEN_FRAMES_KEY = "mccb-seen-frames";
 
@@ -525,181 +524,20 @@ export function onSyncStatus(handler: () => void) {
   return () => window.removeEventListener(STATUS_EVENT, handler);
 }
 
-/* ------------------------------------------------------------------------- *
- * TEMPORARY DIAGNOSTICS — remove this block and components/SyncStatsPanel.tsx
- * together when the sync timings are no longer interesting.
- * ------------------------------------------------------------------------- */
-
-export type SyncStats = {
-  /** True when this device is talking to Neon, false for a local SQLite file. */
-  hosted: boolean | null;
-  /** False means the deployment is answering anyone who knows the URL. */
-  gated: boolean | null;
-  /** Server clock minus this device's clock, in ms. Near zero is healthy. */
-  clockOffsetMs: number | null;
-  roundTripMs: number | null;
-  upstream: {
-    /** Wall time of the last flush, queue drain included. */
-    lastFlushMs: number | null;
-    /** Queued on this device until Neon accepted it. The number that matters. */
-    lastWriteLatencyMs: number | null;
-    slowestWriteMs: number | null;
-    accepted: number;
-    rejected: number;
-    conflicts: number;
-    /** Rows in the last batch, against the one request that carried them. */
-    lastBatchRows: number;
-    requests: number;
-    lastAt: number | null;
-  };
-  downstream: {
-    /** Wall time of the last incremental change-feed request. */
-    lastPollMs: number | null;
-    rowsLastPoll: number;
-    polls: number;
-    emptyPolls: number;
-    /** Written on the server until applied here, corrected for clock offset. */
-    lastChangeLagMs: number | null;
-    lastChangeAt: number | null;
-    lastReconcileMs: number | null;
-    lastReconcileAt: number | null;
-    cursor: number | null;
-  };
-};
-
-const stats: SyncStats = {
-  hosted: null,
-  gated: null,
-  clockOffsetMs: null,
-  roundTripMs: null,
-  upstream: {
-    lastFlushMs: null,
-    lastWriteLatencyMs: null,
-    slowestWriteMs: null,
-    accepted: 0,
-    rejected: 0,
-    conflicts: 0,
-    lastBatchRows: 0,
-    requests: 0,
-    lastAt: null,
-  },
-  downstream: {
-    lastPollMs: null,
-    rowsLastPoll: 0,
-    polls: 0,
-    emptyPolls: 0,
-    lastChangeLagMs: null,
-    lastChangeAt: null,
-    lastReconcileMs: null,
-    lastReconcileAt: null,
-    cursor: null,
-  },
-};
-
-// When each queued item entered the outbox, so upstream latency is measured
-// from the moment of the scan rather than from the start of the flush.
-const queuedAt = new Map<string, number>();
-
-function markQueued(key: string) {
-  if (!queuedAt.has(key)) queuedAt.set(key, Date.now());
-}
-
-function markAccepted(key: string) {
-  const started = queuedAt.get(key);
-  queuedAt.delete(key);
-  stats.upstream.accepted += 1;
-  stats.upstream.lastAt = Date.now();
-  if (started == null) return;
-  const took = Date.now() - started;
-  stats.upstream.lastWriteLatencyMs = took;
-  stats.upstream.slowestWriteMs = Math.max(stats.upstream.slowestWriteMs ?? 0, took);
-}
-
-export function getSyncStats(): SyncStats {
-  return {
-    ...stats,
-    upstream: { ...stats.upstream },
-    downstream: { ...stats.downstream, cursor: readCursor() },
-  };
-}
-
-export function resetSyncStats() {
-  stats.upstream = {
-    lastFlushMs: null,
-    lastWriteLatencyMs: null,
-    slowestWriteMs: null,
-    accepted: 0,
-    rejected: 0,
-    conflicts: 0,
-    lastBatchRows: 0,
-    requests: 0,
-    lastAt: null,
-  };
-  stats.downstream = {
-    ...stats.downstream,
-    lastPollMs: null,
-    rowsLastPoll: 0,
-    polls: 0,
-    emptyPolls: 0,
-    lastChangeLagMs: null,
-    lastChangeAt: null,
-  };
-  notifyStatus();
-}
-
-/** Server time as this device best understands it, using the measured offset. */
-function serverNow(): number {
-  return Date.now() + (stats.clockOffsetMs ?? 0);
-}
-
-function recordChangeLag(serverStampedAt: string | undefined) {
-  if (!serverStampedAt) return;
-  const written = Date.parse(serverStampedAt);
-  if (!Number.isFinite(written)) return;
-  stats.downstream.lastChangeLagMs = Math.max(0, serverNow() - written);
-  stats.downstream.lastChangeAt = Date.now();
-}
-
-async function pingServerClock() {
-  const sentAt = Date.now();
-  const data = await apiGet<{
-    cursor: number;
-    now: string;
-    hosted: boolean;
-    protected: boolean;
-  }>("cursor");
-  if (!data?.now) return data;
-  const roundTrip = Date.now() - sentAt;
-  stats.roundTripMs = roundTrip;
-  stats.hosted = data.hosted;
-  stats.gated = data.protected;
-  stats.clockOffsetMs = Date.parse(data.now) - (sentAt + Math.round(roundTrip / 2));
-  return data;
+async function fetchCursor() {
+  return apiGet<{ cursor: number }>("cursor");
 }
 
 async function flushOutbox() {
   if (flushing || typeof window === "undefined") return;
   flushing = true;
-  const flushStartedAt = Date.now();
   try {
     const box = readOutbox();
-    const hadWork =
-      box.frames.length +
-        box.breakers.length +
-        box.deletedFrames.length +
-        box.strings.length +
-        box.deletedStrings.length +
-        box.projects.length +
-        box.deletedProjects.length +
-        box.faults.length +
-        box.installers.length >
-      0;
+    const hadWork = countPending(box) > 0;
     const next = emptyOutbox();
     for (const id of box.deletedFrames) {
       if (!(await apiPost({ action: "deleteFrame", id }))) next.deletedFrames.push(id);
     }
-    // Frames and holes go up together in one request. Sending them one at a
-    // time meant a 70-hole frame paid the network round trip 70 times over.
     const frames = (await Promise.all(box.frames.map((id) => db.frames.get(id)))).filter(
       (f): f is Frame => Boolean(f),
     );
@@ -707,8 +545,6 @@ async function flushOutbox() {
       (b): b is BreakerRow => Boolean(b),
     );
     if (frames.length || breakers.length) {
-      stats.upstream.lastBatchRows = frames.length + breakers.length;
-      stats.upstream.requests += 1;
       const batch = await apiPostJson<{
         ok: boolean;
         frames: Frame[];
@@ -718,19 +554,14 @@ async function flushOutbox() {
       if (!batch.ok || !batch.data) {
         next.frames.push(...box.frames);
         next.breakers.push(...box.breakers);
-        stats.upstream.rejected += frames.length + breakers.length;
       } else {
         const savedFrames = new Map(batch.data.frames.map((f) => [f.id, f]));
         for (const id of box.frames) {
           const saved = savedFrames.get(id);
           if (!saved) {
             next.frames.push(id);
-            stats.upstream.rejected += 1;
             continue;
           }
-          markAccepted(`frame:${id}`);
-          // Adopt the server's seq and clock so the feed can tell later whether
-          // a remote edit is actually newer than what this device already has.
           const current = await db.frames.get(id);
           if (current) {
             await db.frames.put({ ...current, seq: saved.seq, updatedAt: saved.updatedAt });
@@ -742,17 +573,9 @@ async function flushOutbox() {
           const result = results.get(id);
           if (!result) {
             next.breakers.push(id);
-            stats.upstream.rejected += 1;
             continue;
           }
-          // A rejected hole still carries the server's winning row, so take it.
           await db.breakers.put(result.row);
-          if (result.ok) {
-            markAccepted(`breaker:${id}`);
-          } else {
-            stats.upstream.conflicts += 1;
-            queuedAt.delete(`breaker:${id}`);
-          }
         }
       }
     }
@@ -780,7 +603,6 @@ async function flushOutbox() {
     writeOutbox(remaining);
     if (countPending(remaining) === 0 && reachable) lastSyncedAt = new Date().toISOString();
     if (hadWork) {
-      stats.upstream.lastFlushMs = Date.now() - flushStartedAt;
       notifySync();
       notifyStatus();
     }
@@ -865,30 +687,12 @@ async function pullChanges(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const since = readCursor();
   if (since == null) {
-    const boot = await pingServerClock();
+    const boot = await fetchCursor();
     if (boot) writeCursor(boot.cursor);
     return false;
   }
-  const pollStartedAt = Date.now();
   const data = await apiGet<ChangeFeed>("changes", { since: String(since), origin: deviceId() });
   if (!data) return false;
-
-  stats.downstream.polls += 1;
-  stats.downstream.lastPollMs = Date.now() - pollStartedAt;
-  stats.downstream.rowsLastPoll =
-    data.frames.length +
-    data.breakers.length +
-    data.strings.length +
-    data.faults.length +
-    data.deletedFrames.length +
-    data.deletedStrings.length;
-  if (stats.downstream.rowsLastPoll === 0) stats.downstream.emptyPolls += 1;
-  // Newest server stamp in this batch, so the lag reflects the freshest edit.
-  const freshest = [...data.breakers, ...data.frames]
-    .map((row) => row.updatedAt)
-    .sort()
-    .pop();
-  recordChangeLag(freshest);
 
   let changed = false;
   const box = readOutbox();
@@ -939,7 +743,8 @@ async function purgeLocalFrame(id: string) {
   if (seen.delete(id)) writeSeenFrames(seen);
 }
 
-const RECONCILE_EVERY_MS = 10 * 60_000;
+const RECONCILE_EVERY_MS = 30 * 60_000;
+const POLL_MS = 1000;
 
 export function startBackgroundSync() {
   if (syncStarted || typeof window === "undefined") return;
@@ -957,18 +762,15 @@ export function startBackgroundSync() {
         await flushOutbox();
         const now = Date.now();
         let changed = false;
-        // Tombstones carry deletions through the feed, so the full download is
-        // no longer part of steady-state sync. It stays only as a slow safety
-        // net against a device that somehow drifted out of step.
         if (forceFull || now - lastFullPull > RECONCILE_EVERY_MS) {
           lastFullPull = now;
-          // Snapshot the cursor first: anything written while the reconcile runs
-          // then still comes back through the feed instead of being skipped.
-          const boot = await pingServerClock();
-          const reconcileStartedAt = Date.now();
-          changed = await pullRemote();
-          stats.downstream.lastReconcileMs = Date.now() - reconcileStartedAt;
-          stats.downstream.lastReconcileAt = Date.now();
+          const includeBreakers = !haveBreakerSnapshot;
+          // Snapshot first so writes that land during the download still arrive
+          // on the feed. Only advance the cursor when this pull actually loaded
+          // holes — otherwise a later reconcile would skip breaker edits and
+          // devices would drift.
+          const boot = includeBreakers ? await fetchCursor() : null;
+          changed = await pullRemote({ breakers: includeBreakers });
           if (boot) writeCursor(boot.cursor);
         } else {
           changed = await pullChanges();
@@ -987,7 +789,7 @@ export function startBackgroundSync() {
   window.setInterval(() => {
     if (document.visibilityState !== "visible") return;
     void tick();
-  }, 1000);
+  }, POLL_MS);
   window.addEventListener("focus", () => {
     void tick();
   });
@@ -997,7 +799,7 @@ export function startBackgroundSync() {
   });
 }
 
-async function pullRemote(): Promise<boolean> {
+async function pullRemote(opts?: { breakers?: boolean }): Promise<boolean> {
   const box = readOutbox();
   const dirty = new Set(box.frames);
   const seen = readSeenFrames();
@@ -1105,11 +907,14 @@ async function pullRemote(): Promise<boolean> {
       }
     }
 
-    const breakers = await apiGet<BreakerRow[]>("listBreakers", { projectId: pid });
-    if (breakers) {
-      const dirtyHoles = new Set(box.breakers);
-      for (const row of breakers) {
-        if (await applyRemoteBreaker(row, dirtyHoles)) changed = true;
+    if (opts?.breakers !== false) {
+      const breakers = await apiGet<BreakerRow[]>("listBreakers", { projectId: pid });
+      if (breakers) {
+        haveBreakerSnapshot = true;
+        const dirtyHoles = new Set(box.breakers);
+        for (const row of breakers) {
+          if (await applyRemoteBreaker(row, dirtyHoles)) changed = true;
+        }
       }
     }
 

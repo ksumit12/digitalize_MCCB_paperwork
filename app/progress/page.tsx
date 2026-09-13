@@ -17,7 +17,6 @@ import {
   TrendLine,
 } from "@/components/progress/charts";
 import { SyncBadge } from "@/components/SyncBadge";
-import { SyncStatsPanel } from "@/components/SyncStatsPanel";
 import {
   listFaults,
   listFrames,
@@ -872,7 +871,6 @@ export default function ProgressPage() {
         </div>
       )}
 
-      <SyncStatsPanel />
     </main>
   );
 }

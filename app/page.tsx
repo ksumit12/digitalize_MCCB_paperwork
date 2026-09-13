@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { StringBoard } from "@/components/StringBoard";
 import { HomeMenu } from "@/components/HomeMenu";
 import { SyncBadge } from "@/components/SyncBadge";
-import { SyncStatsPanel } from "@/components/SyncStatsPanel";
 import {
   addStringRun,
   archiveStringRun,
@@ -255,7 +254,6 @@ export default function HomePage() {
           ) : null}
         </div>
       )}
-      <SyncStatsPanel />
     </main>
   );
 }
