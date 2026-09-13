@@ -6,6 +6,7 @@ import { IrPassFail, PolarityPassFail } from "@/components/PassFailPaint";
 import { SerialScanner } from "@/components/SerialScanner";
 import { SignPick } from "@/components/SignPick";
 import { Field, PassFailSelect, Screen } from "@/components/ui";
+import { shuntLivePairExpected } from "@/lib/paperwork";
 import { serialsDiffer } from "@/lib/status";
 import { useFrame } from "@/lib/useFrame";
 import type { BreakerTest, CbsdsLabel, PassFail } from "@/lib/types";
@@ -164,23 +165,27 @@ export default function TestingPage({ params }: { params: Promise<{ id: string }
         <h2 className="font-medium">Shunt trip live test</h2>
         {(
           [
-            ["breakerStack1and2", "Breaker stack 1 & 2"],
-            ["breakerStack3and4", "Breaker stack 3 & 4"],
-            ["breakerStack5and6", "Breaker stack 5 & 6"],
-            ["breakerStack7and8", "Breaker stack 7 & 8"],
+            ["breakerStack1and2", "Breaker stack 1 & 2", 1],
+            ["breakerStack3and4", "Breaker stack 3 & 4", 2],
+            ["breakerStack5and6", "Breaker stack 5 & 6", 3],
+            ["breakerStack7and8", "Breaker stack 7 & 8", 4],
           ] as const
-        ).map(([key, label]) => (
+        ).map(([key, label, pair]) => (
           <label key={key} className="flex items-center justify-between text-sm">
             {label}
-            <PassFailSelect
-              value={et.shuntTripLiveTest[key]}
-              onChange={(v) =>
-                patchEt({
-                  ...et,
-                  shuntTripLiveTest: { ...et.shuntTripLiveTest, [key]: v as PassFail },
-                })
-              }
-            />
+            {shuntLivePairExpected(frame, pair) ? (
+              <PassFailSelect
+                value={et.shuntTripLiveTest[key]}
+                onChange={(v) =>
+                  patchEt({
+                    ...et,
+                    shuntTripLiveTest: { ...et.shuntTripLiveTest, [key]: v as PassFail },
+                  })
+                }
+              />
+            ) : (
+              <span className="text-neutral-500">N/A (32A / no MX)</span>
+            )}
           </label>
         ))}
       </section>

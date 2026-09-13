@@ -1,4 +1,5 @@
 import { emptyIr } from "./ir";
+import { emptyElectricalExtras } from "./paperwork";
 import type {
   AncillaryItem,
   BreakerPosition,
@@ -35,6 +36,7 @@ function emptyBreaker(position: number): BreakerPosition {
     mccbSerialNumber: "",
     microLogicSerialNumber: "",
     shuntTripBatchNumber: "",
+    shuntReleaseStatus: "",
     mccbInstalled: false,
     flexibarCapsRemoved: false,
     whipTerminated: false,
@@ -173,6 +175,7 @@ export function createEmptyFrame(opts?: {
         breakerStack5and6: "",
         breakerStack7and8: "",
       },
+      ...emptyElectricalExtras(),
     },
     handover: {
       date: "",
@@ -184,6 +187,7 @@ export function createEmptyFrame(opts?: {
       installChecklistComplete: false,
       electricalTestingComplete: false,
       notes: "",
+      qaVerdict: "",
     },
   };
 }

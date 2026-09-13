@@ -1,7 +1,14 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { IR_ROWS, POLARITY_ROWS, irForPdf } from "./ir";
-import { frameStatus, statusLabel } from "./status";
-import type { BreakerPosition, Cbsds, CbsdsLabel, ChecklistItem, Frame } from "./types";
+import { IR_ROWS, irForPdf } from "./ir";
+import {
+  CBSDS_LABELS,
+  derivedBoardTicks,
+  shuntLivePairExpected,
+  shuntReleaseOf,
+  shuntTripExpected,
+  standardMark,
+} from "./paperwork";
+import type { BreakerPosition, Cbsds, CbsdsLabel, ChecklistItem, Frame, PassFail } from "./types";
 
 /*
  * FIXED-FORM PDF RENDERER
@@ -106,7 +113,7 @@ function fitText(
   }
 
   let s = size;
-  while (s > 5.5 && font.widthOfTextAtSize(value, s) > maxWidth) {
+  while (s > 4.5 && font.widthOfTextAtSize(value, s) > maxWidth) {
     s -= 0.25;
   }
 
@@ -129,7 +136,8 @@ function drawText(
   y: number,
   font: PDFFont,
   size = 7,
-  maxWidth?: number
+  maxWidth?: number,
+  color = ink,
 ) {
   const fitted = maxWidth
     ? fitText(text, font, size, maxWidth)
@@ -140,7 +148,7 @@ function drawText(
     y,
     size: fitted.size,
     font,
-    color: ink,
+    color,
   });
 }
 
@@ -168,14 +176,14 @@ function drawCell(
   const value = sanitizeForPdf(text);
   if (!value) return;
 
-  const fitted = fitText(value, font, size, Math.max(4, width - 7));
+  const fitted = fitText(value, font, size, Math.max(4, width - 6));
   const tw = font.widthOfTextAtSize(fitted.text, fitted.size);
 
   const tx = align === "center"
     ? x + (width - tw) / 2
     : x + 3;
 
-  const ty = y + (height - fitted.size) / 2 + 1.8;
+  const ty = y + (height - fitted.size) / 2 + fitted.size * 0.2;
 
   page.drawText(fitted.text, {
     x: tx,
@@ -238,6 +246,7 @@ function drawFooter(
   });
 }
 
+/** Black title band. `y` is the top of free space; returns the bottom of the band. */
 function drawSectionTitle(
   page: PDFPage,
   y: number,
@@ -245,17 +254,33 @@ function drawSectionTitle(
   font: PDFFont,
   bold: PDFFont
 ): number {
+  const h = 13;
+  const bottom = y - h;
   page.drawRectangle({
     x: LEFT,
-    y: y - 12,
+    y: bottom,
     width: FORM_W,
-    height: 12,
+    height: h,
     color: black,
   });
+  drawText(page, title, LEFT + 4, bottom + 3.4, bold, 7, FORM_W - 8, white);
+  return bottom;
+}
 
-  drawText(page, title, LEFT + 4, y - 9.5, bold, 7.2, FORM_W - 8);
-
-  return y - 15;
+function drawLabelValue(
+  page: PDFPage,
+  y: number,
+  x: number,
+  labelW: number,
+  valueW: number,
+  h: number,
+  label: string,
+  value: string,
+  font: PDFFont,
+  bold: PDFFont,
+) {
+  drawCell(page, x, y, labelW, h, label, bold, 6.2);
+  drawCell(page, x + labelW, y, valueW, h, value, font, 7);
 }
 
 function drawHeader(
@@ -264,85 +289,46 @@ function drawHeader(
   font: PDFFont,
   bold: PDFFont
 ): number {
-  /*
-   * Header is intentionally compact and fixed.
-   * The main body starts at the same Y coordinate on every physical page.
-   */
   let y = A4[1] - TOP;
 
-  drawText(page, "SHEPHERD", FORM_R - 90, y - 2, bold, 14);
-  drawText(page, "HIRD INSPECTION TEST CHECKLIST", LEFT, y - 2, bold, 10, 380);
+  drawText(page, "SHEPHERD", FORM_R - 88, y - 2, bold, 14);
+  drawText(page, "HIRD INSPECTION TEST CHECKLIST", LEFT, y - 2, bold, 10, 400);
   y -= 18;
 
-  // Outer header grid.
-  const headerH = 108;
-  page.drawRectangle({
-    x: LEFT,
-    y: y - headerH,
-    width: FORM_W,
-    height: headerH,
-    borderColor: grid,
-    borderWidth: 0.6,
-  });
+  const h = 16;
+  const labelW = 118;
+  const half = FORM_W / 2;
+  const valueW = half - labelW;
+  const std = standardMark(frame.market);
 
-  const col1 = 205;
-  const col2 = 190;
-  const col3 = FORM_W - col1 - col2;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Shepherd Frame ID", safe(frame.shepherdFrameId), font, bold);
+  drawLabelValue(page, y, LEFT + half, labelW, valueW, h, "ACTSW Frame ID", safe(frame.actswFrameId), font, bold);
+  y -= h;
 
-  // Horizontal rules.
-  for (const dy of [22, 44, 66, 87]) {
-    page.drawLine({
-      start: { x: LEFT, y: y - dy },
-      end: { x: FORM_R, y: y - dy },
-      thickness: 0.45,
-      color: grid,
-    });
-  }
-
-  // Vertical rules.
-  for (const x of [LEFT + col1, LEFT + col1 + col2]) {
-    page.drawLine({
-      start: { x, y },
-      end: { x, y: y - headerH },
-      thickness: 0.45,
-      color: grid,
-    });
-  }
-
-  const row = (topY: number, label: string, value: string, x: number, w: number) => {
-    drawText(page, label, x + 3, topY - 14, bold, 6.5);
-    drawText(page, value, x + 60, topY - 14, font, 6.8, w - 65);
-  };
-
-  row(y, "Start Date:", safe(frame.startDate), LEFT, col1);
-  row(y, "Start Time:", safe(frame.startTime), LEFT + col1, col2);
-
-  drawText(page, "INT", LEFT + col1 + col2 + 7, y - 14, bold, 7);
-  drawText(page, "AUS", LEFT + col1 + col2 + 7, y - 35, bold, 7);
-
-  row(y - 22, "Finish Date:", safe(frame.finishDate), LEFT, col1);
-  row(y - 22, "Finish Time:", safe(frame.finishTime), LEFT + col1, col2);
-
-  row(y - 44, "Module Frame Serial:", safe(frame.moduleFrameSerialNumber), LEFT, col1);
-  row(y - 44, "String:", safe(frame.stringId), LEFT + col1, col2);
-
-  row(y - 66, "Shepherd Frame ID:", safe(frame.shepherdFrameId), LEFT, col1);
-  row(y - 66, "ACTSW Frame ID:", safe(frame.actswFrameId), LEFT + col1, col2);
-
-  row(y - 87, "Installer:", `${safe(frame.installerName)} ${safe(frame.installerInitials)}`.trim(), LEFT, col1);
-  row(y - 87, "Market:", safe(frame.market), LEFT + col1, col2);
-
-  drawText(
+  drawCell(page, LEFT, y, labelW, h, "Applicable Standard", bold, 6);
+  drawCell(
     page,
-    statusLabel(frameStatus(frame)),
-    LEFT + col1 + col2 + 5,
-    y - 70,
-    bold,
-    6.2,
-    col3 - 10
+    LEFT + labelW,
+    y,
+    FORM_W - labelW,
+    h,
+    `${std.aus ? "[X]" : "[ ]"}  AUS (AS/NZS 61439)      ${std.int ? "[X]" : "[ ]"}  INT (IEC 61439)`,
+    font,
+    7,
   );
+  y -= h;
 
-  return y - headerH - 8;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Start Date", safe(frame.startDate), font, bold);
+  drawLabelValue(page, y, LEFT + half, labelW, valueW, h, "Start Time", safe(frame.startTime), font, bold);
+  y -= h;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Finish Date", safe(frame.finishDate), font, bold);
+  drawLabelValue(page, y, LEFT + half, labelW, valueW, h, "Finish Time", safe(frame.finishTime), font, bold);
+  y -= h;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Installer Name", safe(frame.installerName), font, bold);
+  drawLabelValue(page, y, LEFT + half, labelW, valueW, h, "Sign", safe(frame.installerInitials), font, bold);
+  y -= h + 8;
+
+  return y;
 }
 
 function drawChecklist(
@@ -353,8 +339,9 @@ function drawChecklist(
   bold: PDFFont
 ): number {
   y = drawSectionTitle(page, y, "Install checklist", font, bold);
-  drawTaskHeader(page, y, font, bold);
   y -= HEADER_ROW_H;
+  drawTaskHeader(page, y, font, bold);
+  y -= ROW_H;
 
   const rows: Array<[string, ChecklistItem | undefined]> = [
     ["Install Vertical Cable Ladders", frame.installChecklist.verticalCableLadders],
@@ -388,61 +375,71 @@ function drawSerialTable(
 ): number {
   const positions = sortedPositions(cbsds);
   const cbW = 22;
-  const mccbW = 175;
-  const mlW = 175;
-  const shuntW = FORM_W - cbW - mccbW - mlW;
-  const h = 16;
+  const typeW = 36;
+  const tickW = 28;
+  const shuntW = 100;
+  const serialW = (FORM_W - cbW - typeW * 2 - shuntW - tickW * 2) / 2;
+  const mccbW = serialW;
+  const mlW = serialW;
+  const h = 15;
 
-  page.drawRectangle({
-    x: LEFT,
-    y: y - 12,
-    width: FORM_W,
-    height: 12,
-    color: black,
-  });
-  drawText(page, "Record serial numbers", LEFT + 4, y - 9.5, bold, 7.2, FORM_W - 8);
-  y -= 15;
+  y = drawSectionTitle(page, y, "Record serial numbers", font, bold);
+  y -= h;
 
-  drawCell(page, LEFT, y, cbW, h, "CB", bold, 6, "center");
-  drawCell(page, LEFT + cbW, y, mccbW, h, "MCCB Basic Frame", bold, 6);
-  drawCell(page, LEFT + cbW + mccbW, y, mlW, h, "MCCB Trip unit (Micrologic)", bold, 6);
-  drawCell(page, LEFT + cbW + mccbW + mlW, y, shuntW, h, "Shunt Release Same / N/A", bold, 5.5);
+  let x = LEFT;
+  drawCell(page, x, y, cbW, h, "CB", bold, 6, "center");
+  x += cbW;
+  drawCell(page, x, y, mccbW, h, "MCCB Basic Frame", bold, 5.8);
+  x += mccbW;
+  drawCell(page, x, y, mlW, h, "Trip unit (Micrologic) S/N", bold, 5.5);
+  x += mlW;
+  drawCell(page, x, y, typeW, h, "ML2.2", bold, 5.5, "center");
+  x += typeW;
+  drawCell(page, x, y, typeW, h, "ML5.2E", bold, 5.5, "center");
+  x += typeW;
+  drawCell(page, x, y, shuntW, h, "Shunt Release MX", bold, 5.5);
+  x += shuntW;
+  drawCell(page, x, y, tickW, h, "Same", bold, 5.5, "center");
+  x += tickW;
+  drawCell(page, x, y, tickW, h, "N/A", bold, 5.5, "center");
   y -= h;
 
   for (let i = 0; i < 8; i++) {
     const p = positions[i];
-    const shunt =
-      p?.micrologicSettingAmps === 32
-        ? "N/A"
-        : p?.shuntTripBatchNumber
-          ? `Same  ${safe(p.shuntTripBatchNumber)}`
-          : "";
-    drawCell(page, LEFT, y, cbW, h, String(i + 1), font, 7, "center");
-    drawCell(page, LEFT + cbW, y, mccbW, h, safe(p?.mccbSerialNumber), font, 6.2);
-    drawCell(
-      page,
-      LEFT + cbW + mccbW,
-      y,
-      mlW,
-      h,
-      safe(p?.microLogicSerialNumber),
-      font,
-      6.2
-    );
-    drawCell(page, LEFT + cbW + mccbW + mlW, y, shuntW, h, shunt, font, 6);
+    const status = p ? shuntReleaseOf(p) : "";
+    const model = p?.micrologicModel || "";
+    x = LEFT;
+    drawCell(page, x, y, cbW, h, String(i + 1), font, 7, "center");
+    x += cbW;
+    drawCell(page, x, y, mccbW, h, safe(p?.mccbSerialNumber), font, 6.4);
+    x += mccbW;
+    drawCell(page, x, y, mlW, h, safe(p?.microLogicSerialNumber), font, 6.4);
+    x += mlW;
+    drawCell(page, x, y, typeW, h, model === "2.2" ? "X" : "", bold, 8, "center");
+    x += typeW;
+    drawCell(page, x, y, typeW, h, model === "5.2E" ? "X" : "", bold, 8, "center");
+    x += typeW;
+    drawCell(page, x, y, shuntW, h, status === "na" ? "" : safe(p?.shuntTripBatchNumber), font, 6);
+    x += shuntW;
+    drawCell(page, x, y, tickW, h, status === "same" ? "X" : "", bold, 8, "center");
+    x += tickW;
+    drawCell(page, x, y, tickW, h, status === "na" ? "X" : "", bold, 8, "center");
     y -= h;
   }
 
-  drawText(
+  drawLabelValue(
     page,
-    `Switchboard S/N: ${safe(cbsds.cbsdsSerialNumber)}`,
-    LEFT + 3,
-    y - 4,
+    y,
+    LEFT,
+    118,
+    FORM_W - 118,
+    h,
+    "Switchboard S/N",
+    safe(cbsds.cbsdsSerialNumber),
     font,
-    7,
-    FORM_W - 6
+    bold,
   );
-  return y - 16;
+  return y - 14;
 }
 
 function drawItcFrontPage(
@@ -453,8 +450,9 @@ function drawItcFrontPage(
 ) {
   let y = drawHeader(page, frame, font, bold);
   y = drawSectionTitle(page, y, "SHEPHERD - HIRD INSPECTION TEST CHECKLIST", font, bold);
-  drawTaskHeader(page, y, font, bold);
   y -= HEADER_ROW_H;
+  drawTaskHeader(page, y, font, bold);
+  y -= 16;
 
   const a = frame.ancillaryCircuits;
   const rows: Array<[string, ChecklistItem | undefined | boolean]> = [
@@ -481,6 +479,9 @@ function drawItcFrontPage(
     ["MCB Torque Setting: Line Side / Load Side 2 Nm", a.mcbTorqueLineSideConfirmed && a.mcbTorqueLoadSideConfirmed],
     ["RCBO Torque Setting: Line side 3.5 Nm / Load side 2 Nm", a.rcboTorqueLineSideConfirmed && a.rcboTorqueLoadSideConfirmed],
     ["Install unused frame holes with caps", a.unusedFrameHolesWithCaps],
+    ["Install CB Labels 1-8 per CBSDS", a.cbLabels1to8],
+    ["Install Bungs into unused holes in glandplates", a.bungsUnusedGlandplateHoles],
+    ["Install Bungs into cable path holes in frames", a.bungsCablePathHoles],
   ];
 
   for (const [label, item] of rows) {
@@ -490,7 +491,7 @@ function drawItcFrontPage(
     y -= 16;
   }
 
-  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-003-01 - HIRD ITC", "Page 1 of 5");
+  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-003-01", "Page 1 of 5");
 }
 
 function drawCbsdsPage(
@@ -500,68 +501,46 @@ function drawCbsdsPage(
   font: PDFFont,
   bold: PDFFont,
   pageNo: string,
-  extraTop: boolean
 ) {
   let y = drawHeader(page, frame, font, bold);
 
   y = drawSectionTitle(
     page,
     y,
-    `SHEPHERD INSPECTION TEST CHECKLIST – CBSDS ${cbsds.label}`,
+    `SHEPHERD INSPECTION TEST CHECKLIST - CBSDS ${cbsds.label}`,
     font,
     bold
   );
-
-  if (extraTop) {
-    drawTaskHeader(page, y, font, bold);
-    y -= HEADER_ROW_H;
-    const extra: Array<[string, ChecklistItem]> = [
-      ["Install CB Labels 1-8 per CBSDS", frame.ancillaryCircuits.cbLabels1to8],
-      ["Install Bungs into unused holes in glandplates", frame.ancillaryCircuits.bungsUnusedGlandplateHoles],
-      ["Install Bungs into unused holes in cable path holes in frames", frame.ancillaryCircuits.bungsCablePathHoles],
-    ];
-    for (const [label, item] of extra) {
-      drawTaskRow(page, y, label, itemTick(item), signOf(item), font, bold);
-      y -= ROW_H;
-    }
-    y -= 4;
-  }
-
-  drawTaskHeader(page, y, font, bold);
   y -= HEADER_ROW_H;
+  drawTaskHeader(page, y, font, bold);
+  y -= 15;
 
-  const positions = sortedPositions(cbsds);
-  const lineTorqueDone =
-    positions.length > 0 && positions.every((p) => !!p.torqueLineSideConfirmed);
-  const loadTorqueDone =
-    positions.length > 0 && positions.every((p) => !!p.torqueLoadSideConfirmed);
-  const mlSetDone =
-    positions.length > 0 && positions.every((p) => !!p.micrologicSettingConfirmed);
-  const mccbInstalled = positions.length > 0 && positions.every((p) => p.mccbInstalled);
-  const flexibar = positions.length > 0 && positions.every((p) => p.flexibarCapsRemoved);
-  const whipTerm = positions.length > 0 && positions.every((p) => p.whipTerminated);
-
+  const d = derivedBoardTicks(cbsds, frame.manufacturer);
   const tasks: Array<[string, boolean | "yes" | "na" | ""]> = [
-    [`Install CBSDS ${cbsds.label} per Shop Drawing`, !!cbsds.mountingBoltsTight || !!cbsds.cbsdsSerialNumber],
-    ["CBSDS Mounting Bolts Tight", !!cbsds.mountingBoltsTight],
-    [`CBSDS serial number and Manufacturer: ${safe(cbsds.cbsdsSerialNumber)} ${safe(frame.manufacturer)}`.trim(), !!cbsds.cbsdsSerialNumber],
-    ["Install Gland Plates and Glands per Shop Drawing", !!cbsds.glandPlatesAndGlandsInstalled],
-    ["Select MCCB's from Shop Drawing with trip unit & ML pre-installed", !!cbsds.mccbsSelectedPerShopDrawing],
-    ["Install MCCB's per Shop Drawing", mccbInstalled],
-    ["Remove and retain unused flexibar protection caps", flexibar],
-    ["Terminate Whip Leads", whipTerm],
-    ["MCCB Torque Setting (NSX100, up to 100A: Line Side 10 Nm / Load Side 10 Nm)", lineTorqueDone && loadTorqueDone],
-    ["Set Micrologic unit to required Trip Settings setting", mlSetDone],
+    [`Install CBSDS ${cbsds.label} per Shop Drawing`, d.installedPerDrawing],
+    ["CBSDS Mounting Bolts Tight", d.bolts],
+    [
+      `CBSDS serial number and Manufacturer: ${safe(cbsds.cbsdsSerialNumber)} ${safe(frame.manufacturer)}`.trim(),
+      d.serialAndMfr,
+    ],
+    ["Install Gland Plates and Glands per Shop Drawing", d.glands],
+    ["Select MCCB's from Shop Drawing with trip unit & ML pre-installed", d.selected],
+    ["Install MCCB's per Shop Drawing", d.mccbsInstalled],
+    ["Remove and retain unused flexibar protection caps", d.flexibar],
+    ["Terminate Whip Leads", d.whips],
+    ["MCCB Torque Setting (NSX100, up to 100A: Line Side 10 Nm / Load Side 10 Nm)", d.torque],
+    ["Set Micrologic unit to required Trip Settings setting", d.micrologic],
   ];
 
+  const initials = safe(frame.installerInitials);
   for (const [label, tick] of tasks) {
-    drawTaskRow(page, y, label, tick, "", font, bold, 15);
+    drawTaskRow(page, y, label, tick, initials, font, bold, 15);
     y -= 15;
   }
 
   y -= 4;
   y = drawSerialTable(page, y, cbsds, font, bold);
-  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-003-01 - HIRD ITC", pageNo);
+  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-003-01", pageNo);
 }
 
 function drawAncillaryPage(
@@ -641,49 +620,93 @@ function drawElectricalHeader(
   bold: PDFFont
 ): number {
   let y = A4[1] - TOP;
+  const std = standardMark(frame.market);
+  const e = frame.electricalTesting;
+  const h = 16;
+  const labelW = 118;
+  const half = FORM_W / 2;
+  const valueW = half - labelW;
 
-  page.drawRectangle({
-    x: LEFT,
-    y: y - 60,
-    width: FORM_W,
-    height: 60,
-    borderColor: grid,
-    borderWidth: 0.6,
-  });
+  drawText(page, "SHEPHERD", FORM_R - 88, y - 2, bold, 14);
+  drawText(page, "HIRD ELECTRICAL INSPECTION TEST / CHECKLIST", LEFT, y - 2, bold, 9, 400);
+  y -= 18;
 
-  drawText(page, "SHEPHERD - HIRD ELECTRICAL INSPECTION TEST / CHECKLIST", LEFT + 5, y - 14, bold, 8, FORM_W - 10);
-
-  drawText(
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Shepherd Frame ID", safe(frame.shepherdFrameId), font, bold);
+  drawLabelValue(page, y, LEFT + half, labelW, valueW, h, "ACTSW Frame ID", safe(frame.actswFrameId), font, bold);
+  y -= h;
+  drawCell(page, LEFT, y, labelW, h, "Applicable Standard", bold, 6);
+  drawCell(
     page,
-    `Shepherd Frame ID: ${safe(frame.shepherdFrameId)}`,
-    LEFT + 5,
-    y - 31,
-    font,
-    7
-  );
-
-  drawText(
-    page,
-    `ACTSW Frame ID: ${safe(frame.actswFrameId)}`,
-    LEFT + 220,
-    y - 31,
-    font,
-    7
-  );
-
-  const vis = frame.electricalTesting.visualInspection;
-
-  drawText(
-    page,
-    `Visual Inspection P/F    A: ${safe(vis.A)}    B: ${safe(vis.B)}    C: ${safe(vis.C)}    D: ${safe(vis.D)}`,
-    LEFT + 5,
-    y - 48,
+    LEFT + labelW,
+    y,
+    FORM_W - labelW,
+    h,
+    `${std.aus ? "[X]" : "[ ]"}  AUS (AS/NZS 61439)      ${std.int ? "[X]" : "[ ]"}  INT (IEC 61439)`,
     font,
     7,
-    FORM_W - 10
   );
+  y -= h;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Test Date", safe(frame.startDate), font, bold);
+  drawLabelValue(page, y, LEFT + half, labelW, valueW, h, "Test Time", safe(frame.startTime), font, bold);
+  y -= h;
+  drawLabelValue(
+    page,
+    y,
+    LEFT,
+    labelW,
+    valueW,
+    h,
+    "Installer",
+    `${safe(frame.testerName || frame.installerName)}  ${safe(frame.testerInitials)}`.trim(),
+    font,
+    bold,
+  );
+  drawLabelValue(
+    page,
+    y,
+    LEFT + half,
+    labelW,
+    valueW,
+    h,
+    "Witness",
+    `${safe(e.witnessName)}  ${safe(e.witnessSign)}`.trim(),
+    font,
+    bold,
+  );
+  y -= h + 8;
+  return y;
+}
 
-  return y - 68;
+function drawPfMatrix(
+  page: PDFPage,
+  y: number,
+  title: string,
+  values: Record<CbsdsLabel, PassFail[]>,
+  font: PDFFont,
+  bold: PDFFont,
+  naFor?: (label: CbsdsLabel, i: number) => boolean,
+): number {
+  y = drawSectionTitle(page, y, title, font, bold);
+  const first = 70;
+  const col = (FORM_W - first) / 4;
+  const rh = 14;
+  y -= rh;
+  drawCell(page, LEFT, y, first, rh, "CB", bold, 6, "center");
+  CBSDS_LABELS.forEach((label, i) => {
+    drawCell(page, LEFT + first + i * col, y, col, rh, `CBSDS ${label}`, bold, 6, "center");
+  });
+  y -= rh;
+  for (let i = 0; i < 8; i += 1) {
+    drawCell(page, LEFT, y, first, rh, `CB${i + 1}`, font, 6.2, "center");
+    CBSDS_LABELS.forEach((label, c) => {
+      const na = naFor?.(label, i);
+      const raw = values[label]?.[i] || "";
+      const text = na ? "N/A" : pfPrint(raw);
+      drawCell(page, LEFT + first + c * col, y, col, rh, text, font, 6, "center");
+    });
+    y -= rh;
+  }
+  return y - 6;
 }
 
 function drawMatrix(
@@ -695,16 +718,16 @@ function drawMatrix(
   values: string[][],
   font: PDFFont,
   bold: PDFFont,
-  firstColW = 150
+  firstColW = 150,
+  rowH = 16,
 ): number {
-  drawText(page, title, LEFT + 3, y, bold, 7.2, FORM_W - 6);
-  y -= 17;
+  y = drawSectionTitle(page, y, title, font, bold);
 
   const n = Math.max(1, headers.length);
   const dataW = (FORM_W - firstColW) / n;
-  const h = 16;
+  const h = rowH;
+  y -= h;
 
-  // Header row.
   drawCell(page, LEFT, y, firstColW, h, "", bold, 6.5);
   for (let c = 0; c < headers.length; c++) {
     drawCell(
@@ -744,128 +767,294 @@ function drawMatrix(
   return y - 8;
 }
 
-function drawIrPage(
+function drawQa004Page1(
   page: PDFPage,
   frame: Frame,
   font: PDFFont,
-  bold: PDFFont
+  bold: PDFFont,
 ) {
   let y = drawElectricalHeader(page, frame, font, bold);
-
-  const headers = (["A", "B", "C", "D"] as CbsdsLabel[])
-    .map((l) => `CBSDS ${l}`);
-
-  const values = IR_ROWS.map((row) =>
-    (["A", "B", "C", "D"] as CbsdsLabel[]).map(
-      (label) =>
-        irForPdf(frame.electricalTesting.perCbsdsIr[label]?.readings[row.key] ?? "")
-    )
-  );
-
-  y = drawMatrix(
+  const e = frame.electricalTesting;
+  const vis = e.visualInspection;
+  y = drawResultGrid(
     page,
     y,
-    "IR Test — All MCCBs OFF and FCL fuses pulled (Mohm)",
-    headers,
-    IR_ROWS.map((row) => row.label),
-    values,
+    "Visual inspection  (P/F)",
+    CBSDS_LABELS,
+    ["Visual inspection"],
+    [CBSDS_LABELS.map((label) => pfPrint(vis[label]))],
     font,
     bold,
-    150
+    168,
+    14,
   );
-
-  drawText(
+  const fclH = 16;
+  y -= fclH;
+  drawCell(
     page,
-    `Frame IR Sign: ${safe(frame.electricalTesting.frameIrSign)}`,
-    LEFT + 3,
+    LEFT,
     y,
+    FORM_W,
+    fclH,
+    `FCL fuses pulled before insulation test:  ${e.fclFusesPulled ? "[X] Yes" : "[ ] No"}`,
     font,
-    7
+    7,
+  );
+  y -= 8;
+  y = drawPfMatrix(
+    page,
+    y,
+    "Check mechanical operation of CBs (open / close / reset / push-to-test)",
+    e.mechanicalOperation || { A: [], B: [], C: [], D: [] },
+    font,
+    bold,
+  );
+  y = drawPfMatrix(
+    page,
+    y,
+    "Check shunt trip operation of CBs with MX installed (N/A if no shunt)",
+    e.shuntTripOperation || { A: [], B: [], C: [], D: [] },
+    font,
+    bold,
+    (label, i) => {
+      const b = frame.cbsds.find((c) => c.label === label)?.breakerPositions[i];
+      return !b || !shuntTripExpected(b);
+    },
+  );
+  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01", "Page 1 of 4");
+}
+
+const POLARITY_PAPER_ROWS: Array<{
+  key: "l1ToEarth" | "l2ToEarth" | "l3ToEarth" | "nToEarth";
+  label: string;
+}> = [
+  { key: "l1ToEarth", label: "L1 to Earth Pass/Fail" },
+  { key: "l2ToEarth", label: "L2 to Earth Pass/Fail" },
+  { key: "l3ToEarth", label: "L3 to Earth Pass/Fail" },
+  { key: "nToEarth", label: "N to Earth Pass/Fail" },
+];
+
+/** Paper electrical sheet: test names as rows, holes as columns, results in MOhm / Pass-Fail. */
+function drawResultGrid(
+  page: PDFPage,
+  y: number,
+  title: string,
+  colHeaders: string[],
+  rowLabels: string[],
+  values: string[][],
+  font: PDFFont,
+  bold: PDFFont,
+  firstColW = 168,
+  rowH = 11,
+): number {
+  if (title) y = drawSectionTitle(page, y, title, font, bold);
+  const n = Math.max(1, colHeaders.length);
+  const dataW = (FORM_W - firstColW) / n;
+  y -= rowH;
+  drawCell(page, LEFT, y, firstColW, rowH, "", bold, 5.5);
+  colHeaders.forEach((header, c) => {
+    drawCell(page, LEFT + firstColW + c * dataW, y, dataW, rowH, header, bold, 5.5, "center");
+  });
+  y -= rowH;
+  rowLabels.forEach((label, r) => {
+    drawCell(page, LEFT, y, firstColW, rowH, label, font, 5.6);
+    for (let c = 0; c < n; c += 1) {
+      drawCell(
+        page,
+        LEFT + firstColW + c * dataW,
+        y,
+        dataW,
+        rowH,
+        values[r]?.[c] ?? "",
+        font,
+        5.6,
+        "center",
+      );
+    }
+    y -= rowH;
+  });
+  return y - 6;
+}
+
+function boardIrValues(frame: Frame): string[][] {
+  return IR_ROWS.map((row) =>
+    CBSDS_LABELS.map((label) => irForPdf(frame.electricalTesting.perCbsdsIr[label]?.readings?.[row.key] ?? "", row.key)),
   );
 }
 
-function drawPerBreakerPage(
+function whipIrValues(frame: Frame, label: CbsdsLabel): string[][] {
+  const tests = frame.electricalTesting.perBreakerTest[label] || [];
+  return IR_ROWS.map((row) =>
+    Array.from({ length: 8 }, (_, i) => irForPdf(tests[i]?.irTest?.[row.key] ?? "", row.key)),
+  );
+}
+
+function polarityValues(frame: Frame, label: CbsdsLabel): string[][] {
+  const tests = frame.electricalTesting.perBreakerTest[label] || [];
+  return POLARITY_PAPER_ROWS.map((row) =>
+    Array.from({ length: 8 }, (_, i) => pfPrint(safe(tests[i]?.polarityTest?.[row.key]))),
+  );
+}
+
+function drawWhipAndPolarity(
   page: PDFPage,
+  y: number,
   frame: Frame,
   label: CbsdsLabel,
   font: PDFFont,
-  bold: PDFFont
-) {
-  let y = drawElectricalHeader(page, frame, font, bold);
-
-  const cbsds = frame.cbsds.find((c) => c.label === label);
-  const positions = cbsds ? sortedPositions(cbsds) : [];
+  bold: PDFFont,
+): number {
   const tests = frame.electricalTesting.perBreakerTest[label] || [];
-
-  const headers = positions.map((p) => `${label}${p.position}`);
-
-  const irValues = IR_ROWS.map((row) =>
-    positions.map((_, i) => irForPdf(tests[i]?.irTest?.[row.key] ?? ""))
-  );
-
-  y = drawMatrix(
+  const sign = safe(tests[0]?.sign || frame.electricalTesting.frameIrSign);
+  const holes = Array.from({ length: 8 }, (_, i) => `${label}${i + 1}`);
+  y = drawResultGrid(
     page,
     y,
-    `CBSDS ${label} — Whips (Each MCCB ON, one at a time) — IR`,
-    headers,
+    `CBSDS ${label}  Whips IR Test (Each MCCB ON, one at a time)   Results in MOhm   Sign: ${sign}`,
+    holes,
     IR_ROWS.map((row) => row.label),
-    irValues,
+    whipIrValues(frame, label),
     font,
     bold,
-    150
+    168,
+    12,
   );
-
-  const polarityValues = POLARITY_ROWS.map((row) =>
-    positions.map((_, i) => pfPrint(safe(tests[i]?.polarityTest?.[row.key])))
-  );
-
-  y = drawMatrix(
+  y = drawResultGrid(
     page,
     y,
-    "Polarity test",
-    headers,
-    POLARITY_ROWS.map((row) => row.label),
-    polarityValues,
+    `CBSDS ${label}  Polarity test`,
+    holes,
+    POLARITY_PAPER_ROWS.map((row) => row.label),
+    polarityValues(frame, label),
     font,
     bold,
-    150
+    168,
+    12,
   );
-
-  const sign = tests.find((t) => safe(t.sign))?.sign || "";
-
-  drawText(
-    page,
-    `Sign: ${safe(sign)}`,
-    LEFT + 3,
-    y,
-    font,
-    7
-  );
+  return y;
 }
 
-function drawShuntTripPage(
+function drawEarthBond(
+  page: PDFPage,
+  y: number,
+  frame: Frame,
+  font: PDFFont,
+  bold: PDFFont,
+): number {
+  y = drawSectionTitle(
+    page,
+    y,
+    "Chassis earth bond continuity  (earth bar to body, 0.5 ohm or less)",
+    font,
+    bold,
+  );
+  const h = 16;
+  y -= h;
+  const bondW = FORM_W / 4;
+  CBSDS_LABELS.forEach((label, i) => {
+    const b = frame.electricalTesting.chassisEarthBond?.[label];
+    drawCell(
+      page,
+      LEFT + i * bondW,
+      y,
+      bondW,
+      h,
+      `${label}:  ${pfPrint(b?.result || "")}${b?.ohms ? `  ${b.ohms} ohm` : ""}`,
+      font,
+      6.2,
+      "center",
+    );
+  });
+  return y - 10;
+}
+
+function drawShuntLive(
+  page: PDFPage,
+  y: number,
+  frame: Frame,
+  font: PDFFont,
+  bold: PDFFont,
+): number {
+  y = drawSectionTitle(page, y, "Shunt trip live test (breaker pairs)", font, bold);
+  const h = 18;
+  y -= h;
+  const st = frame.electricalTesting.shuntTripLiveTest;
+  const pairs: Array<[string, PassFail]> = [
+    ["1 & 2", st.breakerStack1and2],
+    ["3 & 4", st.breakerStack3and4],
+    ["5 & 6", st.breakerStack5and6],
+    ["7 & 8", st.breakerStack7and8],
+  ];
+  const pw = FORM_W / 4;
+  pairs.forEach(([label, value], i) => {
+    const pair = (i + 1) as 1 | 2 | 3 | 4;
+    const text = shuntLivePairExpected(frame, pair) ? `${label}:  ${pfPrint(value)}` : `${label}:  N/A`;
+    drawCell(page, LEFT + i * pw, y, pw, h, text, font, 7, "center");
+  });
+  return y - 8;
+}
+
+function drawQa004Page2(
   page: PDFPage,
   frame: Frame,
   font: PDFFont,
-  bold: PDFFont
+  bold: PDFFont,
 ) {
   let y = drawElectricalHeader(page, frame, font, bold);
+  const vis = frame.electricalTesting.visualInspection;
+  y = drawResultGrid(
+    page,
+    y,
+    "Visual inspection  (P/F)",
+    CBSDS_LABELS,
+    ["Visual inspection"],
+    [CBSDS_LABELS.map((label) => pfPrint(vis[label]))],
+    font,
+    bold,
+    168,
+    14,
+  );
 
-  const st = frame.electricalTesting.shuntTripLiveTest;
+  y = drawResultGrid(
+    page,
+    y,
+    "IR Test (All MCCBs OFF and FCL fuses pulled)   Results in MOhm",
+    [...CBSDS_LABELS, "Sign"],
+    IR_ROWS.map((row) => row.label),
+    boardIrValues(frame).map((row) => [...row, safe(frame.electricalTesting.frameIrSign)]),
+    font,
+    bold,
+    168,
+    13,
+  );
 
-  y = drawSectionTitle(page, y, "Shunt Trip Live Test", font, bold);
+  y = drawEarthBond(page, y, frame, font, bold);
+  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01", "Page 2 of 4");
+}
 
-  const values = [
-    ["Stack 1&2", safe(st.breakerStack1and2)],
-    ["Stack 3&4", safe(st.breakerStack3and4)],
-    ["Stack 5&6", safe(st.breakerStack5and6)],
-    ["Stack 7&8", safe(st.breakerStack7and8)],
-  ];
+function drawQa004Page3(
+  page: PDFPage,
+  frame: Frame,
+  font: PDFFont,
+  bold: PDFFont,
+) {
+  let y = drawElectricalHeader(page, frame, font, bold);
+  y = drawWhipAndPolarity(page, y, frame, "A", font, bold);
+  y = drawWhipAndPolarity(page, y, frame, "B", font, bold);
+  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01", "Page 3 of 4");
+}
 
-  for (const [label, value] of values) {
-    drawTaskRow(page, y, label, false, value, font, bold, 22);
-    y -= 22;
-  }
+function drawQa004Page4(
+  page: PDFPage,
+  frame: Frame,
+  font: PDFFont,
+  bold: PDFFont,
+) {
+  let y = drawElectricalHeader(page, frame, font, bold);
+  y = drawWhipAndPolarity(page, y, frame, "C", font, bold);
+  y = drawWhipAndPolarity(page, y, frame, "D", font, bold);
+  drawShuntLive(page, y, frame, font, bold);
+  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01", "Page 4 of 4");
 }
 
 function drawHandoverPage(
@@ -875,75 +1064,77 @@ function drawHandoverPage(
   bold: PDFFont
 ) {
   let y = A4[1] - TOP;
+  const h = 20;
+  const labelW = 200;
+  const valueW = FORM_W - labelW;
+  const tickW = 36;
+  const textW = FORM_W - tickW;
+  const ho = frame.handover;
+  const verdict = ho.qaVerdict || "";
 
-  drawText(page, "SHEPHERD", FORM_R - 90, y - 2, bold, 16);
-  drawText(page, "QA INSPECTION & FRAME HANDOVER SHEET", LEFT, y - 4, bold, 11, 380);
-  y -= 28;
+  drawText(page, "SHEPHERD", FORM_R - 88, y - 2, bold, 16);
+  drawText(page, "QA INSPECTION & FRAME HANDOVER SHEET", LEFT, y - 4, bold, 11, 400);
+  y -= 26;
 
-  drawCell(page, LEFT, y, FORM_W / 2, 16, "Shepherd Frame ID", bold, 8, "center");
-  drawCell(page, LEFT + FORM_W / 2, y, FORM_W / 2, 16, "ACTSW Frame ID", bold, 8, "center");
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Shepherd Frame ID", safe(frame.shepherdFrameId), font, bold);
+  y -= h;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "ACTSW Frame ID", safe(frame.actswFrameId), font, bold);
+  y -= h;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Date", safe(ho.date), font, bold);
+  y -= h;
+  drawLabelValue(page, y, LEFT, labelW, valueW, h, "Time", safe(ho.time), font, bold);
+  y -= h;
+
+  drawCell(page, LEFT, y, textW, h, "All Install Checklist items completed and initialled", font, 7.5);
+  drawCell(page, LEFT + textW, y, tickW, h, ho.installChecklistComplete ? "X" : "", bold, 11, "center");
+  y -= h;
+  drawCell(page, LEFT, y, textW, h, "All Electrical testing items completed and initialled", font, 7.5);
+  drawCell(page, LEFT + textW, y, tickW, h, ho.electricalTestingComplete ? "X" : "", bold, 11, "center");
+  y -= h + 10;
+
+  const boxW = 90;
+  drawCell(page, LEFT, y, 80, 24, "Tick a Box", bold, 7);
+  drawCell(page, LEFT + 80, y, boxW, 24, "QA Passed", font, 8);
+  drawCell(page, LEFT + 80 + boxW, y, 28, 24, verdict === "passed" ? "X" : "", bold, 12, "center");
+  drawCell(page, LEFT + 198, y, boxW, 24, "QA Failed", font, 8);
+  drawCell(page, LEFT + 198 + boxW, y, 28, 24, verdict === "failed" ? "X" : "", bold, 12, "center");
+  drawCell(page, LEFT + 316, y, FORM_W - 316, 24, "", font, 7);
+  y -= 34;
+
+  const notesH = 90;
+  drawCell(page, LEFT, y, FORM_W, 16, "Notes (required for failure if any)", bold, 7.5);
   y -= 16;
-  drawCell(page, LEFT, y, FORM_W / 2, 22, safe(frame.shepherdFrameId), font, 9);
-  drawCell(page, LEFT + FORM_W / 2, y, FORM_W / 2, 22, safe(frame.actswFrameId), font, 9);
-  y -= 30;
-
-  drawTaskHeader(page, y, font, bold);
-  y -= HEADER_ROW_H;
-  drawTaskRow(page, y, `Date: ${safe(frame.handover.date)}`, false, "", font, bold, 20);
-  y -= 20;
-  drawTaskRow(page, y, `Time: ${safe(frame.handover.time)}`, false, "", font, bold, 20);
-  y -= 20;
-
-  const installPass = !!frame.handover.installChecklistComplete;
-  const elecPass = !!frame.handover.electricalTestingComplete;
-
-  drawCell(page, LEFT, y, TASK_W, 22, "All Install Checklist items completed and initialled", font, 7);
-  drawCell(page, LEFT + TASK_W, y, YES_W, 22, installPass ? "X" : "", bold, 9, "center");
-  drawCell(page, LEFT + TASK_W + YES_W, y, NA_W, 22, installPass ? "" : "", bold, 7, "center");
-  drawCell(page, LEFT + TASK_W + TICK_W, y, SIGN_W, 22, installPass ? "QA Passed" : "", font, 6, "center");
-  y -= 22;
-
-  drawCell(page, LEFT, y, TASK_W, 22, "All Electrical testing items completed and initialled", font, 7);
-  drawCell(page, LEFT + TASK_W, y, YES_W, 22, elecPass ? "X" : "", bold, 9, "center");
-  drawCell(page, LEFT + TASK_W + YES_W, y, NA_W, 22, "", bold, 7, "center");
-  drawCell(page, LEFT + TASK_W + TICK_W, y, SIGN_W, 22, elecPass ? "QA Passed" : "", font, 6, "center");
-  y -= 28;
-
-  drawText(page, "Notes (required for failure if any):", LEFT + 3, y, bold, 8);
-  y -= 12;
   page.drawRectangle({
     x: LEFT,
-    y: y - 70,
+    y: y - notesH + 16,
     width: FORM_W,
-    height: 80,
+    height: notesH,
     borderColor: grid,
     borderWidth: 0.45,
+    color: white,
   });
-  drawText(page, safe(frame.handover.notes), LEFT + 4, y - 10, font, 8, FORM_W - 8);
-  y -= 100;
+  drawText(page, safe(ho.notes), LEFT + 6, y - 2, font, 8, FORM_W - 12);
+  y -= notesH + 16;
 
-  drawCell(page, LEFT, y, FORM_W, 18, "Shepherd Electrical (Authorised Person) — Handover By", bold, 8);
-  y -= 18;
-  drawCell(page, LEFT, y, 80, 28, "Name", bold, 7);
-  drawCell(page, LEFT + 80, y, FORM_W / 2 - 80, 28, safe(frame.handover.shepherdName), font, 8);
-  drawCell(page, LEFT + FORM_W / 2, y, 80, 28, "Sign", bold, 7);
-  drawCell(page, LEFT + FORM_W / 2 + 80, y, FORM_W / 2 - 80, 28, safe(frame.handover.shepherdSign), font, 8);
-  y -= 36;
+  const col = FORM_W / 2;
+  const nameH = 26;
+  drawCell(page, LEFT, y, col, 16, "Handover By", bold, 8, "center");
+  drawCell(page, LEFT + col, y, col, 16, "Accepted By", bold, 8, "center");
+  y -= 16;
+  drawCell(page, LEFT, y, col, 28, "Shepherd Electrical (Authorised Person)", font, 7);
+  drawCell(page, LEFT + col, y, col, 28, "Benmax (Authorised Person)", font, 7);
+  y -= 28;
+  drawCell(page, LEFT, y, 50, nameH, "Name", bold, 7);
+  drawCell(page, LEFT + 50, y, col - 50, nameH, safe(ho.shepherdName), font, 9);
+  drawCell(page, LEFT + col, y, 50, nameH, "Name", bold, 7);
+  drawCell(page, LEFT + col + 50, y, col - 50, nameH, safe(ho.benmaxName), font, 9);
+  y -= nameH;
+  drawCell(page, LEFT, y, 50, nameH, "Sign", bold, 7);
+  drawCell(page, LEFT + 50, y, col - 50, nameH, safe(ho.shepherdSign), font, 9);
+  drawCell(page, LEFT + col, y, 50, nameH, "Sign", bold, 7);
+  drawCell(page, LEFT + col + 50, y, col - 50, nameH, safe(ho.benmaxSign), font, 9);
 
-  drawCell(page, LEFT, y, FORM_W, 18, "Benmax (Authorised Person) — Accepted By", bold, 8);
-  y -= 18;
-  drawCell(page, LEFT, y, 80, 28, "Name", bold, 7);
-  drawCell(page, LEFT + 80, y, FORM_W / 2 - 80, 28, safe(frame.handover.benmaxName), font, 8);
-  drawCell(page, LEFT + FORM_W / 2, y, 80, 28, "Sign", bold, 7);
-  drawCell(page, LEFT + FORM_W / 2 + 80, y, FORM_W / 2 - 80, 28, safe(frame.handover.benmaxSign), font, 8);
-
-  drawFooter(
-    page,
-    font,
-    bold,
-    "SHEPHERD-FIRMUS-QA-001-02 - Inspection and Frame Handover Sheet",
-    "Page 1 of 1"
-  );
+  drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-001-02", "Page 1 of 1");
 }
 
 export async function buildFramePdf(frame: Frame): Promise<Uint8Array> {
@@ -959,52 +1150,42 @@ export async function buildFramePdf(frame: Frame): Promise<Uint8Array> {
 
   {
     const page = doc.addPage(A4);
-    drawCbsdsPage(page, frame, frame.cbsds[0], font, bold, "Page 2 of 5", true);
+    drawCbsdsPage(page, frame, frame.cbsds[0], font, bold, "Page 2 of 5");
   }
 
   {
     const page = doc.addPage(A4);
-    drawCbsdsPage(page, frame, frame.cbsds[1], font, bold, "Page 3 of 5", false);
+    drawCbsdsPage(page, frame, frame.cbsds[1], font, bold, "Page 3 of 5");
   }
 
   {
     const page = doc.addPage(A4);
-    drawCbsdsPage(page, frame, frame.cbsds[2], font, bold, "Page 4 of 5", false);
+    drawCbsdsPage(page, frame, frame.cbsds[2], font, bold, "Page 4 of 5");
   }
 
   {
     const page = doc.addPage(A4);
-    drawCbsdsPage(page, frame, frame.cbsds[3], font, bold, "Page 5 of 5", false);
+    drawCbsdsPage(page, frame, frame.cbsds[3], font, bold, "Page 5 of 5");
   }
 
   {
     const page = doc.addPage(A4);
-    drawIrPage(page, frame, font, bold);
-    drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01 - HIRD ITP", "Page 1 of 3");
-  }
-
-  for (const label of ["A", "B"] as CbsdsLabel[]) {
-    const page = doc.addPage(A4);
-    drawPerBreakerPage(page, frame, label, font, bold);
-    drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01 - HIRD ITP", "Page 2 of 3");
+    drawQa004Page1(page, frame, font, bold);
   }
 
   {
     const page = doc.addPage(A4);
-    drawPerBreakerPage(page, frame, "C", font, bold);
-    drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01 - HIRD ITP", "Page 3 of 3");
+    drawQa004Page2(page, frame, font, bold);
   }
 
   {
     const page = doc.addPage(A4);
-    drawPerBreakerPage(page, frame, "D", font, bold);
-    drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01 - HIRD ITP", "Page 3 of 3");
+    drawQa004Page3(page, frame, font, bold);
   }
 
   {
     const page = doc.addPage(A4);
-    drawShuntTripPage(page, frame, font, bold);
-    drawFooter(page, font, bold, "SHEPHERD-FIRMUS-QA-004-01 - HIRD ITP", "Page 3 of 3");
+    drawQa004Page4(page, frame, font, bold);
   }
 
   {

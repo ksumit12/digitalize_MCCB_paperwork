@@ -8,9 +8,10 @@ import { HandsPick } from "@/components/SignPick";
 import { CheckRow, Field, Screen } from "@/components/ui";
 import { lastInstaller, rememberLastInstaller } from "@/lib/crew";
 import { normalizeInitials } from "@/lib/db";
+import { setAmp } from "@/lib/breaker";
 import { needsShuntTrip } from "@/lib/emptyFrame";
 import { useFrame } from "@/lib/useFrame";
-import type { AmpSetting, CbsdsLabel, MicrologicModel } from "@/lib/types";
+import type { CbsdsLabel, MicrologicModel } from "@/lib/types";
 
 export default function BreakerPage({
   params,
@@ -32,7 +33,9 @@ export default function BreakerPage({
   const breaker = cbsds.breakerPositions[bIdx];
 
   function patchBreaker(next: typeof breaker) {
-    if (next.micrologicSettingAmps === 32) next = { ...next, shuntTripBatchNumber: "" };
+    if (next.micrologicSettingAmps === 32) {
+      next = { ...next, shuntTripBatchNumber: "", shuntReleaseStatus: "na" };
+    }
     update((f) => {
       const cbsdsCopy = [...f.cbsds];
       const unit = { ...cbsdsCopy[cIdx] };
@@ -110,13 +113,7 @@ export default function BreakerPage({
             <button
               key={amp}
               type="button"
-              onClick={() =>
-                patchBreaker({
-                  ...breaker,
-                  micrologicSettingAmps: amp as AmpSetting,
-                  shuntTripBatchNumber: amp === 32 ? "" : breaker.shuntTripBatchNumber,
-                })
-              }
+              onClick={() => patchBreaker(setAmp(breaker, amp))}
               className={`flex-1 rounded-lg border py-2 ${
                 breaker.micrologicSettingAmps === amp ? "bg-ink text-white" : "bg-white"
               }`}

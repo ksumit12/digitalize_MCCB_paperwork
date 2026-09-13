@@ -17,7 +17,9 @@ export function isUsed(b: BreakerPosition): boolean {
 export function serialsComplete(b: BreakerPosition): boolean {
   if (!isUsed(b) || !b.micrologicSettingAmps) return false;
   if (!b.mccbSerialNumber.trim() || !b.microLogicSerialNumber.trim()) return false;
-  if (needsShuntTrip(b.micrologicSettingAmps) && !b.shuntTripBatchNumber.trim()) return false;
+  if (needsShuntTrip(b.micrologicSettingAmps) && b.shuntReleaseStatus !== "na" && !b.shuntTripBatchNumber.trim()) {
+    return false;
+  }
   return true;
 }
 
@@ -70,6 +72,7 @@ export function emptySlot(b: BreakerPosition): BreakerPosition {
     mccbSerialNumber: "",
     microLogicSerialNumber: "",
     shuntTripBatchNumber: "",
+    shuntReleaseStatus: "",
     micrologicSettingAmps: "",
     micrologicSettingConfirmed: false,
     mccbScannedBy: "",
@@ -84,6 +87,7 @@ export function setAmp(b: BreakerPosition, amps: 32 | 63 | 100): BreakerPosition
     inUse: true,
     micrologicSettingAmps: amps,
     shuntTripBatchNumber: amps === 32 ? "" : b.shuntTripBatchNumber,
+    shuntReleaseStatus: amps === 32 ? "na" : b.shuntReleaseStatus === "na" ? "" : b.shuntReleaseStatus,
   };
 }
 

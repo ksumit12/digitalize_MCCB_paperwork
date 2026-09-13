@@ -1,3 +1,4 @@
+import { withElectricalDefaults } from "./paperwork";
 import type { BreakerPosition, BreakerRow, Frame, MicrologicModel } from "./types";
 
 export const DEFAULT_PROJECT_ID = "default";
@@ -166,7 +167,17 @@ export function withFrameDefaults(frame: Frame): Frame {
     handover: {
       ...frame.handover,
       notes: frame.handover?.notes ?? "",
+      qaVerdict: frame.handover?.qaVerdict ?? "",
     },
+    electricalTesting: withElectricalDefaults(frame.electricalTesting),
+    cbsds: (frame.cbsds || []).map((c) => ({
+      ...c,
+      breakerPositions: (c.breakerPositions || []).map((b) => ({
+        ...b,
+        shuntReleaseStatus: b.shuntReleaseStatus ?? "",
+        micrologicModel: mlModelOf(b),
+      })),
+    })),
   };
 }
 

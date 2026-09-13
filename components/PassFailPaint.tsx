@@ -122,7 +122,7 @@ export function PolarityPassFail({
   return (
     <PassFailPaint
       rows={POLARITY_ROWS}
-      getValue={(key) => values[key as keyof PolarityTest]}
+      getValue={(key) => values[key as keyof PolarityTest] ?? ""}
       onPaint={(key, value) => onChange({ ...values, [key]: value as PassFail })}
       onPaintAll={(value) =>
         onChange({

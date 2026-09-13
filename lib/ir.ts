@@ -39,12 +39,15 @@ export function irHasValue(ir: IrReadings): boolean {
   return Object.values(ir).some((v) => v.trim() !== "");
 }
 
-/** Screen stores pass/fail; paperwork prints >500mohm on pass. */
-export function irForPdf(value: string): string {
+const PHASE_TO_PHASE: Array<keyof IrReadings> = ["l1ToL2", "l1ToL3", "l2ToL3"];
+
+/** Screen stores pass/fail. 500 VDC tests print >500mohm; phase-to-phase @ 1000 VDC prints >1000mohm. */
+export function irForPdf(value: string, key?: keyof IrReadings): string {
   const t = value.trim().toLowerCase();
   if (!t) return "";
-  if (t === "pass" || t === "p" || t === "yes") return ">500mohm";
   if (t === "fail" || t === "f") return "FAIL";
+  const pass = key && PHASE_TO_PHASE.includes(key) ? ">1000mohm" : ">500mohm";
+  if (t === "pass" || t === "p" || t === "yes") return pass;
   return value.trim();
 }
 

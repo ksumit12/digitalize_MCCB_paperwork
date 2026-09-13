@@ -29,6 +29,10 @@ export type ChecklistItem = {
 
 export type MicrologicModel = "2.2" | "5.2E";
 export type FaultKind = "unit" | "shunt";
+/** Printed "Tick if Same or N/A" on QA-003 serial rows. Empty until chosen. */
+export type ShuntReleaseStatus = "" | "same" | "na";
+export type TestCondition = "" | "closed" | "open";
+export type QaVerdict = "" | "passed" | "failed";
 
 export type BreakerPosition = {
   position: number;
@@ -37,6 +41,8 @@ export type BreakerPosition = {
   microLogicSerialNumber: string;
   micrologicModel?: MicrologicModel;
   shuntTripBatchNumber: string;
+  /** QA-003: Same / N/A, distinct from the serial itself. */
+  shuntReleaseStatus?: ShuntReleaseStatus;
   mccbInstalled: boolean;
   flexibarCapsRemoved: boolean;
   whipTerminated: boolean;
@@ -79,6 +85,20 @@ export type PolarityTest = {
   l2ToEarth: PassFail;
   l3ToEarth: PassFail;
   nToEarth: PassFail;
+  /** Fifth conductor on QA-004 polarity rows. Absent on frames captured before QA-004-01. */
+  e?: PassFail;
+};
+
+export type BondTest = {
+  result: PassFail;
+  /** Optional reading. The printed spec is 0.5 ohm or less. */
+  ohms: string;
+};
+
+export type CbsdsIrSummary = {
+  result: PassFail;
+  mohm: string;
+  condition: TestCondition;
 };
 
 export type FrameIrColumn = {
@@ -132,6 +152,23 @@ export type ElectricalTesting = {
     breakerStack5and6: PassFail;
     breakerStack7and8: PassFail;
   };
+  /** QA-004 p1: FCL fuses pulled before insulation test. */
+  fclFusesPulled?: boolean;
+  witnessName?: string;
+  witnessSign?: string;
+  /** QA-004 p1: mechanical operation, eight CBs per board. */
+  mechanicalOperation?: Record<CbsdsLabel, PassFail[]>;
+  /** QA-004 p1: shunt trip operation. N/A is derived when no MX is installed. */
+  shuntTripOperation?: Record<CbsdsLabel, PassFail[]>;
+  /** QA-004 p2: chassis earth bond, spec 0.5 ohm or less. */
+  chassisEarthBond?: Record<CbsdsLabel, BondTest>;
+  /**
+   * QA-004 p3: board-level IR summary at 1000 V DC.
+   * Distinct from `perCbsdsIr` (the per-board reading grid) and from per-breaker IR.
+   */
+  cbsdsIrSummary?: Record<CbsdsLabel, CbsdsIrSummary>;
+  polarityAllClosed?: Record<CbsdsLabel, boolean>;
+  polarityCondition?: Record<CbsdsLabel, TestCondition>;
 };
 
 export type Handover = {
@@ -144,6 +181,8 @@ export type Handover = {
   installChecklistComplete: boolean;
   electricalTestingComplete: boolean;
   notes?: string;
+  /** QA-001-02: one verdict. Notes are required when this is failed. */
+  qaVerdict?: QaVerdict;
 };
 
 export type InstallChecklist = {
