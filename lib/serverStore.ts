@@ -1,7 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import postgres, { type Sql } from "postgres";
-import { explodeBreakers, hydrateFrame, DEFAULT_PROJECT_ID, withFrameDefaults, type StringRecord, type StringRun } from "./project";
+import {
+  explodeBreakers,
+  hydrateFrame,
+  clampWeeklyTarget,
+  DEFAULT_PROJECT_ID,
+  DEFAULT_WEEKLY_TARGET,
+  withFrameDefaults,
+  type StringRecord,
+  type StringRun,
+} from "./project";
 import type { BreakerRow, Fault, Frame, Installer, Project } from "./types";
 
 const SCHEMA = `
@@ -87,7 +96,7 @@ const SEQ_TABLES = ["frames", "breakers", "strings", "faults"] as const;
 // Bump this when the migration below changes. A serverless instance reads the
 // stored version in one round trip and skips the whole migration when it
 // matches, instead of re-running twenty DDL statements on every cold start.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 type Row = Record<string, unknown>;
 
@@ -212,6 +221,9 @@ async function migrate(d: Driver): Promise<void> {
   // longer need a periodic full download just to notice something vanished.
   await addColumn("frames", "deleted INTEGER NOT NULL DEFAULT 0");
   await addColumn("strings", "deleted INTEGER NOT NULL DEFAULT 0");
+  // The weekly handover target every rate figure on the progress page is read
+  // against. Kept on the project so all devices report the same number.
+  await addColumn("projects", `weekly_target INTEGER NOT NULL DEFAULT ${DEFAULT_WEEKLY_TARGET}`);
 
   await d.run("INSERT INTO sync_seq (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING", []);
   const projects = await d.all("SELECT id FROM projects LIMIT 1");
@@ -344,16 +356,23 @@ export async function storeStatus(): Promise<{ empty: boolean; hosted: boolean }
 
 export async function storeListProjects(): Promise<Project[]> {
   const d = await getDriver();
-  const rows = await d.all("SELECT id, name, created_at FROM projects ORDER BY created_at");
-  return rows.map((r) => ({ id: str(r.id), name: str(r.name), createdAt: str(r.created_at) }));
+  const rows = await d.all(
+    "SELECT id, name, created_at, weekly_target FROM projects ORDER BY created_at",
+  );
+  return rows.map((r) => ({
+    id: str(r.id),
+    name: str(r.name),
+    createdAt: str(r.created_at),
+    weeklyTarget: clampWeeklyTarget(r.weekly_target),
+  }));
 }
 
 export async function storePutProject(project: Project): Promise<void> {
   const d = await getDriver();
   await d.run(
-    `INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)
-     ON CONFLICT (id) DO UPDATE SET name = excluded.name`,
-    [project.id, project.name, project.createdAt],
+    `INSERT INTO projects (id, name, created_at, weekly_target) VALUES (?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET name = excluded.name, weekly_target = excluded.weekly_target`,
+    [project.id, project.name, project.createdAt, clampWeeklyTarget(project.weeklyTarget)],
   );
 }
 
@@ -362,6 +381,7 @@ export async function storeAddProject(name: string): Promise<Project> {
     id: crypto.randomUUID(),
     name: name.trim() || "New project",
     createdAt: new Date().toISOString(),
+    weeklyTarget: DEFAULT_WEEKLY_TARGET,
   };
   await storePutProject(project);
   if (project.id !== DEFAULT_PROJECT_ID) await pruneSeededProject(await getDriver());
@@ -787,14 +807,7 @@ export async function storeImport(dump: {
   faults?: Fault[];
   installers?: Installer[];
 }): Promise<void> {
-  for (const p of dump.projects || []) {
-    const d = await getDriver();
-    await d.run(
-      `INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name`,
-      [p.id, p.name, p.createdAt],
-    );
-  }
+  for (const p of dump.projects || []) await storePutProject(p);
   for (const s of dump.strings || []) await storePutString(s);
   for (const f of dump.frames || []) await storeSaveFrame(f);
   for (const f of dump.faults || []) await storeAddFault(f);

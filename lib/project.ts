@@ -3,6 +3,18 @@ import type { BreakerPosition, BreakerRow, Frame, MicrologicModel } from "./type
 export const DEFAULT_PROJECT_ID = "default";
 const PROJECT_KEY = "mccb-current-project";
 
+/** Frames the shop aims to hand over each week unless a project overrides it. */
+export const DEFAULT_WEEKLY_TARGET = 40;
+
+/** Working days in a week, used to turn the weekly target into a daily pace. */
+export const WORKING_DAYS_PER_WEEK = 5;
+
+export function clampWeeklyTarget(value: unknown): number {
+  const rounded = Math.round(Number(value));
+  if (!Number.isFinite(rounded) || rounded <= 0) return DEFAULT_WEEKLY_TARGET;
+  return Math.min(rounded, 2000);
+}
+
 export function currentProjectId(): string {
   try {
     return localStorage.getItem(PROJECT_KEY) || DEFAULT_PROJECT_ID;

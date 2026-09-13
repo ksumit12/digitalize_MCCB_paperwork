@@ -32,7 +32,12 @@ export const TAP_STAGES: ShopStage[] = [
 
 const ORDER: ShopStage[] = ["", ...SHOP_STAGES];
 
-const PERCENT: Record<Exclude<ShopStage, "">, number> = {
+/**
+ * How complete a frame is once it reaches each stage. These weights are the
+ * unit of account for progress reporting: a frame at `boards` has earned 0.35
+ * of a frame, so a job's earned total is comparable to a frame count.
+ */
+export const STAGE_PERCENT: Record<Exclude<ShopStage, "">, number> = {
   steel: 8,
   ladders: 16,
   cable: 24,
@@ -109,7 +114,7 @@ export function effectiveStage(frame: Frame): ShopStage {
 export function stagePercent(frame: Frame): number {
   const stage = effectiveStage(frame);
   if (!stage) return 0;
-  return PERCENT[stage];
+  return STAGE_PERCENT[stage];
 }
 
 export function stageShortLabel(frame: Frame): string {

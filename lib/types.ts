@@ -160,6 +160,12 @@ export type Installer = {
   name: string;
 };
 
+/** One entry per stage the frame has reached, oldest first. */
+export type StageVisit = {
+  stage: ShopStage;
+  at: string;
+};
+
 export type Frame = {
   id: string;
   projectId?: string;
@@ -167,6 +173,10 @@ export type Frame = {
   stringKey?: string;
   frameSlot?: string;
   submitted?: boolean;
+  /** Set when the frame is first submitted, cleared if it is reopened. */
+  submittedAt?: string;
+  /** Stage timeline, used to measure how long work sits at each stage. */
+  stageHistory?: StageVisit[];
   shopStage?: ShopStage;
   installerInitials?: string;
   installerName?: string;
@@ -198,6 +208,8 @@ export type Project = {
   id: string;
   name: string;
   createdAt: string;
+  /** Frames the shop aims to hand over each week. Drives every rate figure. */
+  weeklyTarget?: number;
 };
 
 export type Fault = {

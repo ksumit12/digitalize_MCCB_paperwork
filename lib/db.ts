@@ -1,15 +1,19 @@
 import Dexie, { type EntityTable } from "dexie";
 import {
   breakerFingerprint,
+  clampWeeklyTarget,
   explodeBreakers,
   hydrateFrame,
   withFrameDefaults,
   DEFAULT_PROJECT_ID,
+  DEFAULT_WEEKLY_TARGET,
   currentProjectId,
   setCurrentProjectId,
   type StringRecord,
   type StringRun,
 } from "./project";
+import { handoverStamp, stampFrameProgress } from "./frameStamp";
+import { effectiveStage } from "./shopStage";
 import type { BreakerRow, Fault, Frame, Installer, Project } from "./types";
 
 export type { StringRecord, StringRun };
@@ -110,7 +114,39 @@ class FrameDb extends Dexie {
       }
       if (breakerRows.length) await tx.table("breakers").bulkPut(breakerRows);
     });
+    this.version(8).stores({
+      frames:
+        "id, updatedAt, shepherdFrameId, actswFrameId, stringId, manufacturer, phase, stringKey, projectId, submittedAt",
+    }).upgrade(async (tx) => {
+      const frames = (await tx.table("frames").toArray()) as Frame[];
+      for (const frame of frames) {
+        const patched = backfillFrameProgress(frame);
+        if (patched) await tx.table("frames").put(patched);
+      }
+    });
   }
+}
+
+/**
+ * Fills in the progress stamps for frames created before they existed, or
+ * returns null when the frame already has them.
+ *
+ * The entry time for the current stage is unknowable in hindsight, so the last
+ * edit is used: it is the most recent moment we have evidence of work. Aging
+ * therefore reads as fresh at upgrade time and grows honestly from there,
+ * rather than inventing a backdated figure that would show phantom stalls.
+ */
+function backfillFrameProgress(frame: Frame): Frame | null {
+  const submittedAt = frame.submitted && !frame.submittedAt
+    ? handoverStamp(frame) || frame.updatedAt || frame.createdAt
+    : frame.submittedAt;
+  const needsHistory = !frame.stageHistory?.length;
+  if (submittedAt === frame.submittedAt && !needsHistory) return null;
+  const stage = effectiveStage(frame);
+  const seeded = stage && needsHistory
+    ? [{ stage, at: submittedAt || frame.updatedAt || frame.createdAt }]
+    : frame.stageHistory;
+  return { ...frame, submittedAt, stageHistory: seeded };
 }
 
 export const db = new FrameDb();
@@ -973,7 +1009,7 @@ async function pullRemote(): Promise<boolean> {
     for (const p of projects) {
       if (box.deletedProjects.includes(p.id)) continue;
       const local = await db.projects.get(p.id);
-      if (!local || local.name !== p.name) {
+      if (!local || local.name !== p.name || local.weeklyTarget !== p.weeklyTarget) {
         await db.projects.put(p);
         changed = true;
       }
@@ -1167,11 +1203,12 @@ export async function getFrame(id: string): Promise<Frame | undefined> {
 
 export async function saveFrame(frame: Frame): Promise<void> {
   const now = new Date().toISOString();
-  const next: Frame = {
+  const previous = await db.frames.get(frame.id);
+  const next: Frame = stampFrameProgress(previous, {
     ...frame,
     projectId: frame.projectId || currentProjectId(),
     updatedAt: now,
-  };
+  }, now);
   const incoming = explodeBreakers(next);
   const dirtyIds: string[] = [];
   await db.transaction("rw", db.frames, db.breakers, async () => {
@@ -1330,8 +1367,40 @@ export async function findFrameBySlot(stringKey: string, frameSlot: string): Pro
 export async function listProjects(): Promise<Project[]> {
   startBackgroundSync();
   const rows = await db.projects.toArray();
-  if (rows.length) return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  return [{ id: DEFAULT_PROJECT_ID, name: "Current project", createdAt: new Date().toISOString() }];
+  if (rows.length) {
+    return rows
+      .map((p) => ({ ...p, weeklyTarget: clampWeeklyTarget(p.weeklyTarget) }))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+  return [
+    {
+      id: DEFAULT_PROJECT_ID,
+      name: "Current project",
+      createdAt: new Date().toISOString(),
+      weeklyTarget: DEFAULT_WEEKLY_TARGET,
+    },
+  ];
+}
+
+/** The weekly handover target for the active project, defaulted when unset. */
+export async function weeklyTarget(): Promise<number> {
+  const project = await db.projects.get(currentProjectId());
+  return clampWeeklyTarget(project?.weeklyTarget);
+}
+
+export async function setWeeklyTarget(frames: number): Promise<number> {
+  const id = currentProjectId();
+  const existing = await db.projects.get(id);
+  const project: Project = {
+    id,
+    name: existing?.name || "Current project",
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    weeklyTarget: clampWeeklyTarget(frames),
+  };
+  await db.projects.put(project);
+  queueProject(project);
+  void flushOutbox();
+  return project.weeklyTarget ?? DEFAULT_WEEKLY_TARGET;
 }
 
 export async function addProject(name: string): Promise<Project> {
@@ -1340,6 +1409,7 @@ export async function addProject(name: string): Promise<Project> {
     id: crypto.randomUUID(),
     name: trimmed || "New project",
     createdAt: new Date().toISOString(),
+    weeklyTarget: DEFAULT_WEEKLY_TARGET,
   };
   await db.projects.put(project);
   setCurrentProjectId(project.id);

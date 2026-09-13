@@ -8,6 +8,7 @@ lib/pdf.ts.bak
 serials-inbox/*
 !serials-inbox/.gitkeep
 /data
+/.verify
 
 # Every env file except the placeholder example. The old rule only matched
 # names ending in .local, so a plain .env would have been committed.

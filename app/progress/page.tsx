@@ -2,21 +2,48 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CountUp, Donut, RailBar, Sparkbars, TrendArea } from "@/components/progress/charts";
+import { AttainmentDial, CountUp, PaceCurve, RailBar, TargetBars } from "@/components/progress/charts";
 import { SyncBadge } from "@/components/SyncBadge";
 import { SyncStatsPanel } from "@/components/SyncStatsPanel";
-import { listFaults, listFrames, onSharedSync } from "@/lib/db";
-import { buildProgress, PERIODS, trend, type Period, type ProgressStats } from "@/lib/progress";
+import {
+  listFaults,
+  listFrames,
+  listProjects,
+  listStringRuns,
+  onSharedSync,
+  setWeeklyTarget,
+  weeklyTarget as readWeeklyTarget,
+} from "@/lib/db";
+import { currentProjectId } from "@/lib/project";
+import {
+  bucketTarget,
+  buildProgress,
+  PERIODS,
+  trend,
+  type Period,
+  type ProgressStats,
+} from "@/lib/progress";
 import type { Fault, Frame } from "@/lib/types";
 
-const ACCENT = {
-  scans: "#4f46e5",
-  cumulative: "#0ea5e9",
-  installing: "#f59e0b",
-  testing: "#10b981",
-  submitted: "#0284c7",
-  fault: "#e11d48",
+const AHEAD = "#059669";
+const BEHIND = "#dc2626";
+const WARN = "#d97706";
+
+const PERIOD_NOUN: Record<Period, string> = { day: "day", week: "week", month: "month" };
+/** Reads naturally in a sentence, where "this day" would not. */
+const PERIOD_PHRASE: Record<Period, string> = {
+  day: "today",
+  week: "this week",
+  month: "this month",
 };
+
+function fmt1(n: number): string {
+  return (Math.round(n * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function shortDate(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
 
 function Card({
   title,
@@ -50,21 +77,22 @@ function Card({
 function Kpi({
   label,
   value,
-  delta,
   unit = "",
+  delta,
   caption,
   goodWhenDown = false,
-  icon,
+  decimals = 0,
   delay = 0,
 }: {
   label: string;
   value: number;
-  delta: number | null;
   unit?: string;
-  /** Replaces the trend line for figures a percentage change makes no sense of. */
+  /** Percentage change against the period before, or null when there is none. */
+  delta?: number | null;
+  /** Replaces the trend line where a percentage change would not mean anything. */
   caption?: string;
   goodWhenDown?: boolean;
-  icon: React.ReactNode;
+  decimals?: number;
   delay?: number;
 }) {
   const rising = delta != null && delta > 0;
@@ -76,12 +104,12 @@ function Kpi({
       className="card-rise rounded-xl border border-black/10 bg-white p-4"
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[13px] text-neutral-600">{label}</p>
-        <span className="text-neutral-400">{icon}</span>
-      </div>
-      <p className="mt-3 text-[26px] font-semibold leading-none tracking-tight">
-        <CountUp value={value} />
+      <p className="text-[13px] text-neutral-600">{label}</p>
+      <p className="mt-3 text-[26px] font-semibold leading-none tracking-tight tabular-nums">
+        <CountUp
+          value={value}
+          format={(n) => (decimals ? fmt1(n) : String(Math.round(n)))}
+        />
         {unit ? <span className="text-lg font-medium text-neutral-400">{unit}</span> : null}
       </p>
       <p
@@ -92,29 +120,111 @@ function Kpi({
         {caption
           ? caption
           : delta == null
-            ? value > 0
-              ? "no earlier figure to compare"
-              : "nothing yet"
+            ? "no earlier figure to compare"
             : delta === 0
               ? "level with the period before"
-              : `${rising ? "↑" : "↓"} ${Math.abs(delta)}% vs period before`}
+              : `${rising ? "↑" : "↓"} ${Math.abs(delta)}% vs the period before`}
       </p>
     </div>
   );
 }
 
-function relative(at: number, now: number): string {
-  const secs = Math.round((now - at) / 1000);
-  if (secs < 60) return "just now";
-  if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
-  if (secs < 86_400) return `${Math.round(secs / 3600)}h ago`;
-  return `${Math.round(secs / 86_400)}d ago`;
+/** The one sentence the page exists to produce. */
+function forecastSentence(stats: ProgressStats): { text: string; tone: "ahead" | "behind" | "unknown" } {
+  const { forecast, weeklyTarget } = stats;
+  if (forecast.remaining <= 0) {
+    return { text: "Every planned frame is handed over. The job is complete.", tone: "ahead" };
+  }
+  if (forecast.recentRate <= 0 || forecast.finishAtRecentRate === null) {
+    return {
+      text: `Nothing has been handed over in the last four weeks, so there is no rate to forecast from. At ${weeklyTarget} a week the remaining ${fmt1(forecast.remaining)} frames would take ${fmt1(forecast.weeksAtTarget)} weeks.`,
+      tone: "unknown",
+    };
+  }
+  const slip = forecast.slipDays ?? 0;
+  const gap = `${fmt1(forecast.recentRate)} a week against a target of ${weeklyTarget}`;
+  const weeks = `${fmt1(forecast.weeksAtRecentRate ?? 0)} weeks rather than ${fmt1(forecast.weeksAtTarget)}`;
+  const finish = shortDate(forecast.finishAtRecentRate);
+  if (slip > 0) {
+    return {
+      text: `Running at ${gap}, the remaining ${fmt1(forecast.remaining)} frames take ${weeks} — finishing around ${finish}, ${slip} days later than hitting the target would.`,
+      tone: "behind",
+    };
+  }
+  return {
+    text: `Running at ${gap}, the remaining ${fmt1(forecast.remaining)} frames take ${weeks} — finishing around ${finish}, ${Math.abs(slip)} days inside the target pace.`,
+    tone: "ahead",
+  };
+}
+
+function TargetEditor({
+  value,
+  onSave,
+}: {
+  value: number;
+  onSave: (next: number) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-xs text-neutral-500 underline decoration-dotted underline-offset-2"
+      >
+        Target {value} frames a week — change
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        await onSave(Number(draft));
+        setSaving(false);
+        setEditing(false);
+      }}
+    >
+      <label className="text-xs text-neutral-500" htmlFor="weekly-target">
+        Frames a week
+      </label>
+      <input
+        id="weekly-target"
+        type="number"
+        min={1}
+        inputMode="numeric"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        className="w-20 rounded-lg border border-rule px-2 py-1 text-sm tabular-nums"
+      />
+      <button
+        type="submit"
+        disabled={saving}
+        className="rounded-lg bg-ink px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
+    </form>
+  );
 }
 
 export default function ProgressPage() {
-  const [period, setPeriod] = useState<Period>("day");
+  const [period, setPeriod] = useState<Period>("week");
   const [frames, setFrames] = useState<Frame[]>([]);
   const [faults, setFaults] = useState<Fault[]>([]);
+  const [stringCount, setStringCount] = useState(0);
+  const [target, setTarget] = useState(40);
+  const [projectName, setProjectName] = useState("");
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -122,9 +232,18 @@ export default function ProgressPage() {
   async function refresh() {
     try {
       setError("");
-      const [f, x] = await Promise.all([listFrames(), listFaults()]);
+      const [f, x, strings, weekly, projects] = await Promise.all([
+        listFrames(),
+        listFaults(),
+        listStringRuns(),
+        readWeeklyTarget(),
+        listProjects(),
+      ]);
       setFrames(f);
       setFaults(x);
+      setStringCount(strings.length);
+      setTarget(weekly);
+      setProjectName(projects.find((p) => p.id === currentProjectId())?.name || "");
       setNow(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read this device's data");
@@ -138,27 +257,22 @@ export default function ProgressPage() {
     return onSharedSync(() => void refresh());
   }, []);
 
-  // Keeps "2m ago" honest without re-reading the database.
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
   const stats: ProgressStats = useMemo(
-    () => buildProgress(frames, faults, period, new Date(now)),
-    // now is deliberately excluded: re-bucketing every 30s would replay the
+    () => buildProgress(frames, faults, period, target, stringCount, new Date(now)),
+    // now is deliberately excluded: re-bucketing on a timer would replay the
     // animations. A sync or a period change is what should refresh the charts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [frames, faults, period],
+    [frames, faults, period, target, stringCount],
   );
 
-  const phases = [
-    { label: "Installing", value: stats.phases.installing, color: ACCENT.installing },
-    { label: "Testing", value: stats.phases.testing, color: ACCENT.testing },
-    { label: "Submitted", value: stats.phases.submitted, color: ACCENT.submitted },
-  ].filter((s) => s.value > 0);
-
-  const topInstaller = stats.installers[0];
+  const noun = PERIOD_NOUN[period];
+  const phrase = PERIOD_PHRASE[period];
+  const forecast = forecastSentence(stats);
+  const shortfall = Math.max(0, stats.pace.target - stats.pace.actual);
+  const cycle = stats.cycleTimeDays;
+  const fpy = stats.firstPassYield;
+  const worstStage = [...stats.stages].sort((a, b) => b.frames - a.frames)[0];
+  const stagePeak = Math.max(1, ...stats.stages.map((s) => s.frames));
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-12 pt-5">
@@ -176,237 +290,271 @@ export default function ProgressPage() {
             </Link>
             <h1 className="text-2xl font-semibold tracking-tight">Progress</h1>
           </div>
-          <p className="mt-1 pl-11 text-sm text-neutral-500">{stats.rangeLabel}</p>
+          <p className="mt-1 pl-11 text-sm text-neutral-500">
+            {projectName ? `${projectName} · ` : ""}
+            {stats.rangeLabel}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <SyncBadge />
-        </div>
+        <SyncBadge />
       </header>
 
       {/* Period switch. Changing it remounts the charts below, so everything
           animates in again rather than snapping to new numbers. */}
-      <div className="mb-5 inline-flex rounded-xl bg-zinc-100 p-1">
-        {PERIODS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => setPeriod(p.id)}
-            aria-pressed={period === p.id}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-              period === p.id ? "bg-white text-ink shadow-sm" : "text-neutral-500"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-xl bg-zinc-100 p-1">
+          {PERIODS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPeriod(p.id)}
+              aria-pressed={period === p.id}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                period === p.id ? "bg-white text-ink shadow-sm" : "text-neutral-500"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <TargetEditor
+          value={target}
+          onSave={async (next) => {
+            const saved = await setWeeklyTarget(next);
+            setTarget(saved);
+          }}
+        />
       </div>
 
       {error ? (
-        <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>
+        <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </p>
       ) : null}
 
       {!ready ? (
         <p className="text-sm text-neutral-500">Reading this device…</p>
       ) : (
         <div key={period} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Kpi
-              label="Serials scanned"
-              value={stats.scans.value}
-              delta={trend(stats.scans)}
-              delay={0}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                  <path d="M4 7V5h4M20 7V5h-4M4 17v2h4M20 17v2h-4M7 12h10" strokeLinecap="round" />
-                </svg>
-              }
-            />
-            <Kpi
-              label="Frames submitted"
-              value={stats.submitted.value}
-              delta={trend(stats.submitted)}
-              delay={60}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              }
-            />
-            <Kpi
-              label="Faults raised"
-              value={stats.faults.value}
-              delta={trend(stats.faults)}
-              goodWhenDown
-              delay={120}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                  <path d="M12 9v4M12 17h.01M10.3 4.3L2.6 18a1.5 1.5 0 001.3 2.2h16.2a1.5 1.5 0 001.3-2.2L13.7 4.3a1.5 1.5 0 00-2.6 0z" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              }
-            />
-            <Kpi
-              label="Holes complete"
-              value={stats.completion.pct}
-              unit="%"
-              delta={null}
-              caption={
-                stats.completion.total
-                  ? `${stats.completion.done} of ${stats.completion.total} used holes, all time`
-                  : "no holes in use yet"
-              }
-              delay={180}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 7v5l3 2" strokeLinecap="round" />
-                </svg>
-              }
-            />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card
-              title="Scan activity"
-              subtitle={period === "day" ? "Serials per hour" : "Serials per day"}
-              delay={220}
-              className="lg:col-span-2"
-            >
-              <Sparkbars buckets={stats.buckets} accent={ACCENT.scans} />
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-neutral-500">
-                <span>
-                  Busiest {period === "day" ? "hour" : "day"}:{" "}
-                  <span className="font-medium text-ink">
-                    {stats.busiest ? `${stats.busiest.label} · ${stats.busiest.scans}` : "—"}
-                  </span>
-                </span>
-                {period !== "day" ? (
-                  <span>
-                    Average on days worked:{" "}
-                    <span className="font-medium text-ink">{stats.perDayAverage}</span>
-                  </span>
-                ) : null}
+          {/* Headline: are we hitting the rate, and where does that land us. */}
+          <section
+            className="card-rise rounded-xl border border-black/10 bg-white p-4"
+            style={{ animationDelay: "0ms" }}
+          >
+            <div className="flex flex-wrap items-center gap-5">
+              <AttainmentDial
+                attainment={stats.pace.attainment}
+                actual={stats.pace.actual}
+                target={stats.pace.target}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] text-neutral-600">
+                  Frames handed over {phrase}, against the target
+                </p>
+                <p className="mt-1 text-[22px] font-semibold leading-tight tracking-tight">
+                  {stats.pace.actual} of {fmt1(stats.pace.target)}
+                  {shortfall > 0 ? (
+                    <span className="text-neutral-400"> · {fmt1(shortfall)} short</span>
+                  ) : (
+                    <span className="text-emerald-600"> · target met</span>
+                  )}
+                </p>
+                <p
+                  className={`mt-2 text-sm leading-snug ${
+                    forecast.tone === "behind"
+                      ? "text-rose-700"
+                      : forecast.tone === "ahead"
+                        ? "text-emerald-700"
+                        : "text-neutral-500"
+                  }`}
+                >
+                  {forecast.text}
+                </p>
               </div>
-            </Card>
+            </div>
+          </section>
 
-            <Card title="Frame phases" subtitle="Every frame on this job" delay={280}>
-              {phases.length ? (
-                <Donut
-                  slices={phases}
-                  centerValue={String(stats.phases.installing + stats.phases.testing + stats.phases.submitted)}
-                  centerLabel="frames"
-                />
-              ) : (
-                <p className="py-8 text-center text-sm text-neutral-400">No frames yet.</p>
-              )}
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi
+              label="Earned frames"
+              value={stats.earned.value}
+              decimals={1}
+              delta={trend(stats.earned)}
+              caption={`includes part-built frames · ${fmt1(stats.scope.earnedFrames)} of ${stats.scope.plannedFrames} on the job`}
+              delay={40}
+            />
+            <Kpi
+              label="Job complete"
+              value={stats.scope.pct}
+              unit="%"
+              caption={`${stats.scope.handedOverFrames} handed over, ${stats.openFrames} open, ${stringCount} strings planned`}
+              delay={80}
+            />
+            <Kpi
+              label="Frame cycle time"
+              value={cycle ?? 0}
+              unit=" d"
+              decimals={1}
+              caption={
+                cycle === null
+                  ? `none handed over ${phrase}`
+                  : stats.previousCycleTimeDays === null
+                    ? "median first work to handover"
+                    : `median · was ${fmt1(stats.previousCycleTimeDays)} d before`
+              }
+              delay={120}
+            />
+            <Kpi
+              label="Right first time"
+              value={fpy === null ? 0 : Math.round(fpy * 100)}
+              unit="%"
+              caption={
+                fpy === null
+                  ? `none handed over ${phrase}`
+                  : stats.faultRate === null
+                    ? "handed over with no fault raised"
+                    : `rework ran at ${fmt1(stats.faultRate)} per 100 breakers`
+              }
+              delay={160}
+            />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-2">
             <Card
-              title="Running total"
-              subtitle={`Serials accumulating across the ${period === "day" ? "day" : period}`}
-              delay={320}
-              className="lg:col-span-2"
+              title={`Frames handed over each ${noun}`}
+              subtitle={`Bars are frames · dashed line is the target of ${fmt1(bucketTarget(period, target))} a ${noun} · green clears it, red misses, dashed bar is the ${noun} still running`}
+              delay={200}
             >
-              <TrendArea
-                values={stats.cumulative}
+              <TargetBars
+                buckets={stats.buckets}
+                target={bucketTarget(period, target)}
+                unitLabel="frames"
+              />
+            </Card>
+
+            <Card
+              title="Against the target pace"
+              subtitle={`Cumulative earned frames (solid) against the cumulative target (dashed), over the last ${stats.buckets.length} ${noun}s · shaded gap is how far ahead or behind`}
+              delay={240}
+            >
+              <PaceCurve
+                earned={stats.curve.earned}
+                target={stats.curve.target}
                 labels={stats.buckets.map((b) => b.label)}
-                accent={ACCENT.cumulative}
               />
               <p className="mt-2 text-xs text-neutral-500">
-                Ends at{" "}
-                <span className="font-medium text-ink">
-                  {stats.cumulative[stats.cumulative.length - 1] ?? 0}
-                </span>{" "}
-                serials for this period.
+                {(() => {
+                  const earnedEnd = stats.curve.earned[stats.curve.earned.length - 1] ?? 0;
+                  const targetEnd = stats.curve.target[stats.curve.target.length - 1] ?? 0;
+                  const gap = earnedEnd - targetEnd;
+                  if (Math.abs(gap) < 0.5) return "Level with the target pace over this window.";
+                  return gap > 0
+                    ? `${fmt1(gap)} frames ahead of the target pace over this window.`
+                    : `${fmt1(Math.abs(gap))} frames behind the target pace over this window.`;
+                })()}
               </p>
-            </Card>
-
-            <Card title="Who scanned" subtitle="Serials recorded in this period" delay={360}>
-              {stats.installers.length ? (
-                <div className="space-y-3">
-                  {stats.installers.map((person, i) => (
-                    <RailBar
-                      key={person.name}
-                      label={person.name}
-                      pct={topInstaller ? (person.scans / topInstaller.scans) * 100 : 0}
-                      value={String(person.scans)}
-                      color={ACCENT.scans}
-                      delay={400 + i * 70}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="py-8 text-center text-sm text-neutral-400">Nothing scanned in this period.</p>
-              )}
             </Card>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card
-              title="String completion"
-              subtitle="Holes with both serials recorded, all time"
-              delay={400}
+              title="Where the open frames are sitting"
+              subtitle={
+                worstStage
+                  ? `Biggest pile is ${worstStage.label} with ${worstStage.frames} frames · the number beside each stage is the median days waiting there`
+                  : "No open frames"
+              }
+              delay={280}
             >
-              {stats.strings.length ? (
-                <div className="space-y-3.5">
-                  {stats.strings.map((s, i) => (
+              {stats.stages.length ? (
+                <div className="space-y-3">
+                  {stats.stages.map((stage, i) => (
                     <RailBar
-                      key={s.key}
-                      label={`String ${s.key}`}
-                      caption={`${s.slots} frame${s.slots === 1 ? "" : "s"} started`}
-                      pct={s.pct}
-                      value={`${s.done}/${s.total}`}
-                      color={s.pct >= 100 ? ACCENT.testing : "#111827"}
-                      delay={440 + i * 60}
+                      key={stage.stage || "none"}
+                      label={stage.label}
+                      value={`${stage.frames}`}
+                      pct={(stage.frames / stagePeak) * 100}
+                      caption={
+                        stage.medianDaysWaiting > 0
+                          ? `${stage.medianDaysWaiting} d median wait`
+                          : "moved today"
+                      }
+                      color={stage.medianDaysWaiting >= 7 ? BEHIND : stage.medianDaysWaiting >= 3 ? WARN : AHEAD}
+                      delay={i * 50}
                     />
                   ))}
                 </div>
               ) : (
-                <p className="py-8 text-center text-sm text-neutral-400">No strings yet.</p>
+                <p className="text-sm text-neutral-500">
+                  Nothing open — every frame that exists has been handed over.
+                </p>
               )}
             </Card>
 
-            <Card title="Recent activity" subtitle="Scans and faults, newest first" delay={440}>
-              {stats.activity.length ? (
-                <ul className="space-y-3">
-                  {stats.activity.map((item, i) => (
+            <Card
+              title="Longest without moving"
+              subtitle="Open frames ranked by days at their current stage, so they can be chased by name"
+              delay={320}
+            >
+              {stats.stalled.length ? (
+                <ul className="divide-y divide-black/5">
+                  {stats.stalled.map((frame, i) => (
                     <li
-                      key={`${item.at}-${item.title}-${i}`}
-                      className="chart-legend flex items-start gap-3"
-                      style={{ animationDelay: `${480 + i * 40}ms` }}
+                      key={frame.id}
+                      className="chart-legend flex items-center justify-between gap-3 py-2.5"
+                      style={{ animationDelay: `${i * 60}ms` }}
                     >
-                      <span
-                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                        style={{ background: item.kind === "fault" ? ACCENT.fault : ACCENT.testing }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{item.title}</p>
-                        <p className="truncate text-xs text-neutral-500">
-                          {item.detail}
-                          {item.by ? ` · ${item.by}` : ""}
+                      <Link href={`/frames/${frame.id}/map`} className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          String {frame.stringKey} · {frame.slot}
                         </p>
-                      </div>
-                      <span className="shrink-0 text-xs text-neutral-400">{relative(item.at, now)}</span>
+                        <p className="text-xs text-neutral-500">at {frame.stageLabel}</p>
+                      </Link>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${
+                          frame.daysWaiting >= 7
+                            ? "bg-rose-50 text-rose-700"
+                            : frame.daysWaiting >= 3
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-zinc-100 text-neutral-600"
+                        }`}
+                      >
+                        {frame.daysWaiting} d
+                      </span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="py-8 text-center text-sm text-neutral-400">
-                  Nothing recorded in this period yet.
-                </p>
+                <p className="text-sm text-neutral-500">Nothing open to chase.</p>
               )}
             </Card>
           </div>
 
-          <p className="pt-1 text-center text-xs text-neutral-400">
-            Counts come from this device&apos;s copy, which syncs with the shared database.
-            {stats.completion.total > 0
-              ? ` ${stats.completion.done} of ${stats.completion.total} used holes have both serials.`
-              : ""}
-          </p>
+          <Card
+            title="Strings, least complete first"
+            subtitle="Earned percentage across each string's 14 slots, with how long the string has been open"
+            delay={360}
+          >
+            {stats.strings.length ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {stats.strings.map((run, i) => (
+                  <RailBar
+                    key={run.key}
+                    label={`String ${run.key}`}
+                    value={`${run.pct}%`}
+                    pct={run.pct}
+                    caption={`${run.handedOver} of 14 handed over · ${fmt1(run.earned)} earned · open ${run.daysActive} d`}
+                    color={run.pct >= 100 ? AHEAD : run.pct >= 50 ? "#111827" : WARN}
+                    delay={i * 40}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500">No strings on this project yet.</p>
+            )}
+          </Card>
         </div>
       )}
+
       <SyncStatsPanel />
     </main>
   );
