@@ -176,11 +176,9 @@ body {
 
 @keyframes sheet-in {
   from {
-    opacity: 0;
-    transform: translateX(-18px);
+    transform: translateX(-100%);
   }
   to {
-    opacity: 1;
     transform: none;
   }
 }
@@ -209,6 +207,11 @@ body {
 button,
 a {
   touch-action: manipulation;
+}
+
+.string-dial,
+.string-dial * {
+  touch-action: pan-y;
 }
 
 .tile-press {

@@ -54,6 +54,9 @@ export function StringBoard({
             onDelete(stringKey);
           }, 550);
         }}
+        onPointerMove={(e) => {
+          if (Math.abs(e.movementX) + Math.abs(e.movementY) > 6) clearHold();
+        }}
         onPointerUp={clearHold}
         onPointerLeave={clearHold}
         onPointerCancel={clearHold}

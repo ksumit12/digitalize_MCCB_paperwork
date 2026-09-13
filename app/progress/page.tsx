@@ -362,17 +362,16 @@ export default function ProgressPage() {
   return (
     <main className="mx-auto max-w-6xl px-4 pb-16 pt-5">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div className="home-rise min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <HomeMenu />
-            <DesktopNav />
-            <h1 className="text-2xl font-semibold tracking-tight md:hidden">Progress</h1>
+        <div className="flex min-w-0 items-start gap-2">
+          <HomeMenu />
+          <DesktopNav />
+          <div className="home-rise min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">Progress</h1>
+            <p className="mt-1 text-sm text-muted">
+              {projectName ? `${projectName} · ` : ""}
+              {stats.rangeLabel}
+            </p>
           </div>
-          <h1 className="mt-4 hidden text-2xl font-semibold tracking-tight md:block">Progress</h1>
-          <p className="mt-1 text-sm text-muted md:mt-1">
-            {projectName ? `${projectName} · ` : ""}
-            {stats.rangeLabel}
-          </p>
         </div>
         <SyncBadge />
       </header>

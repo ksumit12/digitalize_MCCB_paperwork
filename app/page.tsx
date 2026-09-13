@@ -240,45 +240,40 @@ export default function HomePage() {
           <p className="mt-1 text-sm text-muted">Tap to add the first one.</p>
         </button>
       ) : current ? (
-        <>
-          <div className="lg:hidden">
-            <StringDial
-              index={Math.min(dial, Math.max(0, active.length - 1))}
-              onIndex={setDial}
-              items={active.map((group) => (
-                <StringBoard
+        <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-4">
+          <nav className="mb-3 hidden lg:sticky lg:top-4 lg:mb-0 lg:flex lg:flex-col lg:gap-1" aria-label="Strings">
+            {active.map((group, i) => {
+              const on = i === Math.min(dial, active.length - 1);
+              return (
+                <button
                   key={group.key}
-                  stringKey={group.key}
-                  frames={group.frames}
-                  onDelete={setPendingDelete}
-                />
-              ))}
-            />
-          </div>
-          <div className="hidden lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-4">
-            <nav className="sticky top-4 flex flex-col gap-1" aria-label="Strings">
-              {active.map((group, i) => {
-                const on = i === Math.min(dial, active.length - 1);
-                return (
-                  <button
-                    key={group.key}
-                    type="button"
-                    onClick={() => setDial(i)}
-                    className={`rounded-2xl px-3 py-3 text-left ${
-                      on ? "bg-accent text-accent-ink" : "bg-surface text-ink ring-1 ring-rule hover:bg-surface-2"
-                    }`}
-                  >
-                    <p className="font-semibold">String {group.key}</p>
-                    <p className={`text-xs ${on ? "text-accent-ink/70" : "text-muted"}`}>
-                      {group.started}/{FRAME_SLOTS.length} started
-                    </p>
-                  </button>
-                );
-              })}
-            </nav>
-            <StringBoard stringKey={current.key} frames={current.frames} onDelete={setPendingDelete} />
-          </div>
-        </>
+                  type="button"
+                  onClick={() => setDial(i)}
+                  className={`rounded-2xl px-3 py-3 text-left ${
+                    on ? "bg-accent text-accent-ink" : "bg-surface text-ink ring-1 ring-rule hover:bg-surface-2"
+                  }`}
+                >
+                  <p className="font-semibold">String {group.key}</p>
+                  <p className={`text-xs ${on ? "text-accent-ink/70" : "text-muted"}`}>
+                    {group.started}/{FRAME_SLOTS.length} started
+                  </p>
+                </button>
+              );
+            })}
+          </nav>
+          <StringDial
+            index={Math.min(dial, Math.max(0, active.length - 1))}
+            onIndex={setDial}
+            items={active.map((group) => (
+              <StringBoard
+                key={group.key}
+                stringKey={group.key}
+                frames={group.frames}
+                onDelete={setPendingDelete}
+              />
+            ))}
+          />
+        </div>
       ) : null}
 
       {done.length ? (

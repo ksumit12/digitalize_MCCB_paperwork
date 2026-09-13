@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-const STIFFNESS = 420;
-const DAMPING = 26;
+const STIFFNESS = 380;
+const DAMPING = 28;
 const MASS = 1;
-const SETTLE_X = 0.6;
-const SETTLE_V = 12;
-const DISTANCE_RATIO = 0.22;
-const FLICK_PX_MS = 0.55;
-const LOCK_PX = 8;
+const SETTLE_X = 0.8;
+const SETTLE_V = 16;
+const DISTANCE_RATIO = 0.16;
+const FLICK_PX_MS = 0.28;
+const LOCK_PX = 6;
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -26,25 +26,28 @@ export function StringDial({
 }) {
   const count = items.length;
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  const [x, setX] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const widthRef = useRef(0);
   const xRef = useRef(0);
   const velRef = useRef(0);
   const dragging = useRef(false);
   const locked = useRef(false);
-  const startRef = useRef({ pointer: 0, origin: 0, t: 0 });
+  const swiped = useRef(false);
+  const startRef = useRef({ x: 0, y: 0, origin: 0 });
   const lastRef = useRef({ x: 0, t: 0 });
   const raf = useRef<number | null>(null);
   const indexRef = useRef(index);
   indexRef.current = index;
+  const [tick, setTick] = useState(index);
 
-  function writeX(next: number) {
+  function paint(next: number) {
     xRef.current = next;
-    setX(next);
+    const track = trackRef.current;
+    if (track) track.style.transform = `translate3d(${next}px,0,0)`;
   }
 
   function restX(at = indexRef.current) {
-    return -at * width;
+    return -at * widthRef.current;
   }
 
   function stopSpring() {
@@ -54,13 +57,8 @@ export function StringDial({
 
   function springTo(target: number, seedVel = velRef.current) {
     stopSpring();
-    if (!width) {
-      writeX(target);
-      velRef.current = 0;
-      return;
-    }
-    if (prefersReducedMotion()) {
-      writeX(target);
+    if (!widthRef.current || prefersReducedMotion()) {
+      paint(target);
       velRef.current = 0;
       return;
     }
@@ -74,12 +72,12 @@ export function StringDial({
       velRef.current += accel * dt;
       const next = xRef.current + velRef.current * dt;
       if (Math.abs(disp) < SETTLE_X && Math.abs(velRef.current) < SETTLE_V) {
-        writeX(target);
+        paint(target);
         velRef.current = 0;
         raf.current = null;
         return;
       }
-      writeX(next);
+      paint(next);
       raf.current = requestAnimationFrame(step);
     };
     raf.current = requestAnimationFrame(step);
@@ -91,9 +89,9 @@ export function StringDial({
     const measure = () => {
       const next = el.clientWidth;
       if (!next) return;
-      setWidth(next);
+      widthRef.current = next;
       if (!dragging.current) {
-        writeX(-indexRef.current * next);
+        paint(-indexRef.current * next);
         velRef.current = 0;
       }
     };
@@ -104,10 +102,11 @@ export function StringDial({
   }, []);
 
   useEffect(() => {
-    if (!width || dragging.current) return;
+    setTick(index);
+    if (!widthRef.current || dragging.current) return;
     springTo(restX(index));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, width]);
+  }, [index]);
 
   useEffect(() => () => stopSpring(), []);
 
@@ -116,40 +115,47 @@ export function StringDial({
     onIndex(next);
   }
 
-  function rubber(raw: number) {
-    if (index === 0 && raw > 0) return raw * 0.28;
-    if (index === count - 1 && raw < 0) return raw * 0.28;
+  function rubber(raw: number, at: number) {
+    if (at === 0 && raw > 0) return raw * 0.28;
+    if (at === count - 1 && raw < 0) return raw * 0.28;
     return raw;
   }
 
-  function onStart(clientX: number) {
+  function onStart(clientX: number, clientY: number) {
     stopSpring();
     dragging.current = true;
     locked.current = false;
     const t = performance.now();
-    startRef.current = { pointer: clientX, origin: xRef.current, t };
+    startRef.current = { x: clientX, y: clientY, origin: xRef.current };
     lastRef.current = { x: clientX, t };
     velRef.current = 0;
   }
 
-  function onMove(clientX: number) {
+  function onMove(clientX: number, clientY: number) {
     if (!dragging.current) return;
-    const dx = clientX - startRef.current.pointer;
+    const dx = clientX - startRef.current.x;
+    const dy = clientY - startRef.current.y;
     if (!locked.current) {
-      if (Math.abs(dx) < LOCK_PX) return;
+      if (Math.abs(dx) < LOCK_PX && Math.abs(dy) < LOCK_PX) return;
+      if (Math.abs(dy) > Math.abs(dx)) {
+        dragging.current = false;
+        return;
+      }
       locked.current = true;
+      swiped.current = true;
     }
     const t = performance.now();
     const dt = t - lastRef.current.t;
     if (dt > 0) velRef.current = ((clientX - lastRef.current.x) / dt) * 1000;
     lastRef.current = { x: clientX, t };
-    writeX(startRef.current.origin + rubber(dx));
+    paint(startRef.current.origin + rubber(dx, indexRef.current));
   }
 
   function onEnd() {
     if (!dragging.current) return;
     dragging.current = false;
     const current = indexRef.current;
+    const width = widthRef.current;
     if (!locked.current || !width) {
       springTo(restX(current), 0);
       return;
@@ -160,7 +166,11 @@ export function StringDial({
     if ((offset < -width * DISTANCE_RATIO || flick < -FLICK_PX_MS) && current < count - 1) next = current + 1;
     else if ((offset > width * DISTANCE_RATIO || flick > FLICK_PX_MS) && current > 0) next = current - 1;
     if (next !== current) onIndex(next);
-    springTo(restX(next), velRef.current);
+    else springTo(restX(next), velRef.current);
+    locked.current = false;
+    window.setTimeout(() => {
+      swiped.current = false;
+    }, 350);
   }
 
   useEffect(() => {
@@ -173,26 +183,59 @@ export function StringDial({
     return () => window.removeEventListener("keydown", onKey);
   }, [count, index]);
 
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const onClick = (e: Event) => {
+      if (!swiped.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      swiped.current = false;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!dragging.current) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      onMove(touch.clientX, touch.clientY);
+      if (locked.current) e.preventDefault();
+    };
+
+    el.addEventListener("click", onClick, true);
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener("click", onClick, true);
+      el.removeEventListener("touchmove", onTouchMove);
+    };
+  }, []);
+
   if (count <= 1) return <div>{items[0]}</div>;
 
   return (
     <div>
       <div
         ref={viewportRef}
-        className="relative select-none overflow-hidden rounded-3xl"
-        style={{ touchAction: "pan-y" }}
+        className="string-dial relative select-none overflow-hidden rounded-3xl"
         onPointerDown={(e) => {
-          if ((e.target as HTMLElement).closest("a,button,input")) return;
-          onStart(e.clientX);
-          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          if ((e.target as HTMLElement).closest("input,textarea,select")) return;
+          onStart(e.clientX, e.clientY);
         }}
-        onPointerMove={(e) => onMove(e.clientX)}
+        onPointerMove={(e) => {
+          if (e.pointerType === "touch") return;
+          onMove(e.clientX, e.clientY);
+          if (locked.current && viewportRef.current && !viewportRef.current.hasPointerCapture(e.pointerId)) {
+            viewportRef.current.setPointerCapture(e.pointerId);
+          }
+        }}
         onPointerUp={onEnd}
         onPointerCancel={onEnd}
       >
         <div
-          className="flex will-change-transform"
-          style={{ width: `${count * 100}%`, transform: `translate3d(${x}px,0,0)` }}
+          ref={trackRef}
+          className="flex"
+          style={{ width: `${count * 100}%`, transform: `translate3d(${-index * (widthRef.current || 0)}px,0,0)` }}
         >
           {items.map((item, i) => (
             <div
@@ -200,7 +243,6 @@ export function StringDial({
               className="shrink-0"
               style={{ width: `${100 / count}%` }}
               aria-hidden={i !== index}
-              inert={i !== index ? true : undefined}
             >
               {item}
             </div>
@@ -208,38 +250,13 @@ export function StringDial({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-3">
-        <button
-          type="button"
-          aria-label="Previous string"
-          disabled={index === 0}
-          onClick={() => go(index - 1)}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-lg disabled:opacity-30"
-        >
-          ‹
-        </button>
-        <div className="flex items-center gap-1.5">
-          {items.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              aria-label={`String ${i + 1}`}
-              onClick={() => go(i)}
-              className={`h-1.5 rounded-full transition-all ${
-                i === index ? "w-6 bg-accent" : "w-1.5 bg-rule"
-              }`}
-            />
-          ))}
-        </div>
-        <button
-          type="button"
-          aria-label="Next string"
-          disabled={index === count - 1}
-          onClick={() => go(index + 1)}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-surface text-lg disabled:opacity-30"
-        >
-          ›
-        </button>
+      <div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden="true">
+        {items.map((_, i) => (
+          <span
+            key={i}
+            className={`h-1.5 rounded-full ${i === tick ? "w-6 bg-accent" : "w-1.5 bg-rule"}`}
+          />
+        ))}
       </div>
     </div>
   );
