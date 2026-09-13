@@ -21,6 +21,7 @@ import {
   storeSaveBreaker,
   storeSaveFrame,
   storeChanges,
+  storeCursor,
   storeSaveInstaller,
   storeSearchBreakers,
   storeStatus,
@@ -46,8 +47,9 @@ export async function GET(req: Request) {
       const frame = await storeGetFrame(url.searchParams.get("id") || "");
       return NextResponse.json(frame ?? null);
     }
+    if (action === "cursor") return NextResponse.json(await storeCursor());
     if (action === "changes") {
-      return NextResponse.json(await storeChanges(url.searchParams.get("since") || ""));
+      return NextResponse.json(await storeChanges(Number(url.searchParams.get("since") ?? -1)));
     }
     if (action === "searchBreakers") {
       const q = url.searchParams.get("q") || "";
@@ -69,8 +71,8 @@ export async function POST(req: Request) {
       return NextResponse.json(result, { status: result.ok ? 200 : 409 });
     }
     if (action === "saveFrame") {
-      await storeSaveFrame(body.frame as Frame);
-      return NextResponse.json({ ok: true });
+      const frame = await storeSaveFrame(body.frame as Frame);
+      return NextResponse.json({ ok: true, frame });
     }
     if (action === "deleteFrame") {
       await storeDeleteFrame(String(body.id || ""));

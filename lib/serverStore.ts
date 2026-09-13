@@ -72,7 +72,13 @@ CREATE TABLE IF NOT EXISTS installers (
   initials TEXT PRIMARY KEY,
   name TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sync_seq (
+  id INTEGER PRIMARY KEY,
+  value BIGINT NOT NULL
+);
 `;
+
+const SEQ_TABLES = ["frames", "breakers", "strings", "faults"] as const;
 
 type Row = Record<string, unknown>;
 
@@ -167,6 +173,19 @@ async function getDriver(): Promise<Driver> {
       } catch {
         /* ignore */
       }
+      for (const table of SEQ_TABLES) {
+        try {
+          await d.exec(`ALTER TABLE ${table} ADD COLUMN seq BIGINT NOT NULL DEFAULT 0`);
+        } catch {
+          /* already present */
+        }
+        try {
+          await d.exec(`CREATE INDEX IF NOT EXISTS ${table}_seq ON ${table} (seq)`);
+        } catch {
+          /* ignore */
+        }
+      }
+      await d.run("INSERT INTO sync_seq (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING", []);
       const projects = await d.all("SELECT id FROM projects LIMIT 1");
       if (!projects.length) {
         await d.run("INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)", [
@@ -198,6 +217,22 @@ function num(v: unknown): number {
   return Number(v) || 0;
 }
 
+// One locked counter row, bumped in a single statement, so the numbers a client
+// pulls with `seq > cursor` can never arrive out of order the way wall-clock
+// timestamps do when a phone and the server disagree about the time.
+async function nextSeq(d: Driver): Promise<number> {
+  const row = await d.get("UPDATE sync_seq SET value = value + 1 WHERE id = 1 RETURNING value");
+  if (row) return num(row.value);
+  await d.run("UPDATE sync_seq SET value = value + 1 WHERE id = 1");
+  const fallback = await d.get("SELECT value FROM sync_seq WHERE id = 1");
+  return num(fallback?.value);
+}
+
+async function currentSeq(d: Driver): Promise<number> {
+  const row = await d.get("SELECT value FROM sync_seq WHERE id = 1");
+  return num(row?.value);
+}
+
 function paperworkFrame(row: Row): Frame {
   const paper = JSON.parse(str(row.paperwork) || "{}") as Frame;
   return withFrameDefaults({
@@ -209,7 +244,27 @@ function paperworkFrame(row: Row): Frame {
     phase: (str(row.phase) as Frame["phase"]) || paper.phase,
     submitted: num(row.submitted) === 1 || paper.submitted,
     updatedAt: str(row.updated_at) || paper.updatedAt,
+    seq: num(row.seq),
   });
+}
+
+function rowToFault(r: Row): Fault {
+  return {
+    id: str(r.id),
+    projectId: str(r.project_id),
+    frameId: str(r.frame_id),
+    stringKey: str(r.string_key),
+    frameSlot: str(r.frame_slot),
+    hole: str(r.hole),
+    kind: str(r.kind) === "shunt" ? "shunt" : "unit",
+    oldMccb: str(r.old_mccb),
+    oldMl: str(r.old_ml),
+    oldMlModel: str(r.old_ml_model) === "5.2E" ? "5.2E" : str(r.old_ml_model) ? "2.2" : "",
+    oldShunt: str(r.old_shunt),
+    reason: str(r.reason),
+    raisedBy: str(r.raised_by),
+    raisedAt: str(r.raised_at),
+  };
 }
 
 function rowToBreaker(r: Row): BreakerRow {
@@ -238,6 +293,7 @@ function rowToBreaker(r: Row): BreakerRow {
     mlSet: num(r.ml_set),
     updatedAt: str(r.updated_at),
     rev: num(r.rev),
+    seq: num(r.seq),
   };
 }
 
@@ -318,16 +374,18 @@ export async function storeGetFrame(id: string): Promise<Frame | undefined> {
   return hydrateFromDb(d, paperworkFrame(row));
 }
 
-export async function storeSaveFrame(frame: Frame): Promise<void> {
+export async function storeSaveFrame(frame: Frame): Promise<Frame> {
   const d = await getDriver();
+  const seq = await nextSeq(d);
   const next = withFrameDefaults({
     ...frame,
     projectId: frame.projectId || DEFAULT_PROJECT_ID,
-    updatedAt: frame.updatedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    seq,
   });
   await d.run(
-    `INSERT INTO frames (id, project_id, string_key, frame_slot, phase, submitted, updated_at, paperwork)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO frames (id, project_id, string_key, frame_slot, phase, submitted, updated_at, paperwork, seq)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        project_id = excluded.project_id,
        string_key = excluded.string_key,
@@ -335,7 +393,8 @@ export async function storeSaveFrame(frame: Frame): Promise<void> {
        phase = excluded.phase,
        submitted = excluded.submitted,
        updated_at = excluded.updated_at,
-       paperwork = excluded.paperwork`,
+       paperwork = excluded.paperwork,
+       seq = excluded.seq`,
     [
       next.id,
       next.projectId,
@@ -345,12 +404,15 @@ export async function storeSaveFrame(frame: Frame): Promise<void> {
       next.submitted ? 1 : 0,
       next.updatedAt,
       JSON.stringify(next),
+      seq,
     ],
   );
   const existing = await d.get("SELECT id FROM breakers WHERE frame_id = ?", [next.id]);
-  if (existing) return;
-  const breakers = explodeBreakers(next);
-  for (const b of breakers) await upsertBreaker(d, { ...b, rev: 0 });
+  if (existing) return next;
+  for (const b of explodeBreakers(next)) {
+    await upsertBreaker(d, { ...b, rev: 0, seq: await nextSeq(d) });
+  }
+  return next;
 }
 
 async function upsertBreaker(d: Driver, b: BreakerRow): Promise<void> {
@@ -359,8 +421,8 @@ async function upsertBreaker(d: Driver, b: BreakerRow): Promise<void> {
     `INSERT INTO breakers (
       id, project_id, frame_id, string_key, frame_slot, hole, board, position, in_use, amps,
       mccb_serial, ml_serial, ml_model, shunt_batch, scanned_by, scanned_at,
-      mccb_installed, flexibar_caps, whip_terminated, torque_line, torque_load, ml_set, updated_at, rev
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      mccb_installed, flexibar_caps, whip_terminated, torque_line, torque_load, ml_set, updated_at, rev, seq
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (id) DO UPDATE SET
        project_id = excluded.project_id,
        frame_id = excluded.frame_id,
@@ -384,11 +446,13 @@ async function upsertBreaker(d: Driver, b: BreakerRow): Promise<void> {
        torque_load = excluded.torque_load,
        ml_set = excluded.ml_set,
        updated_at = excluded.updated_at,
-       rev = excluded.rev`,
+       rev = excluded.rev,
+       seq = excluded.seq`,
     [
       b.id, b.projectId, b.frameId, b.stringKey, b.frameSlot, b.hole, b.board, b.position, b.inUse, b.amps,
       b.mccbSerial, b.mlSerial, b.mlModel, b.shuntBatch, b.scannedBy, b.scannedAt,
       b.mccbInstalled, b.flexibarCaps, b.whipTerminated, b.torqueLine, b.torqueLoad, b.mlSet, b.updatedAt, rev,
+      b.seq ?? 0,
     ],
   );
 }
@@ -404,25 +468,60 @@ export async function storeSaveBreaker(
     return { ok: false, conflict: rowToBreaker(current) };
   }
   const nextRev = (current ? num(current.rev) : 0) + 1;
-  const row: BreakerRow = { ...incoming, updatedAt: now, rev: nextRev };
+  const row: BreakerRow = { ...incoming, updatedAt: now, rev: nextRev, seq: await nextSeq(d) };
   await upsertBreaker(d, row);
   return { ok: true, breaker: row };
 }
 
-export async function storeChanges(since: string): Promise<{
-  cursor: string;
-  breakers: BreakerRow[];
+export type ChangeFeed = {
+  cursor: number;
   frames: Frame[];
-}> {
+  breakers: BreakerRow[];
+  strings: StringRecord[];
+  faults: Fault[];
+};
+
+const CHANGE_PAGE = 400;
+
+export async function storeCursor(): Promise<{ cursor: number }> {
+  return { cursor: await currentSeq(await getDriver()) };
+}
+
+export async function storeChanges(since: number): Promise<ChangeFeed> {
   const d = await getDriver();
-  const cursor = new Date().toISOString();
-  if (!since) return { cursor, breakers: [], frames: [] };
-  const breakerRows = await d.all("SELECT * FROM breakers WHERE updated_at >= ? ORDER BY updated_at", [since]);
-  const frameRows = await d.all("SELECT * FROM frames WHERE updated_at >= ? ORDER BY updated_at", [since]);
+  let cursor = await currentSeq(d);
+  if (!Number.isFinite(since) || since < 0) {
+    return { cursor, frames: [], breakers: [], strings: [], faults: [] };
+  }
+
+  const page = async (table: string) =>
+    d.all(`SELECT * FROM ${table} WHERE seq > ? ORDER BY seq LIMIT ${CHANGE_PAGE}`, [since]);
+
+  const [frameRows, breakerRows, stringRows, faultRows] = await Promise.all([
+    page("frames"),
+    page("breakers"),
+    page("strings"),
+    page("faults"),
+  ]);
+
+  // A truncated page means there is more after it, so only claim up to the last
+  // row we actually handed over. The extra rows come back on the next tick.
+  for (const rows of [frameRows, breakerRows, stringRows, faultRows]) {
+    if (rows.length === CHANGE_PAGE) cursor = Math.min(cursor, num(rows[rows.length - 1].seq));
+  }
+
   return {
     cursor,
+    frames: frameRows.map(paperworkFrame),
     breakers: breakerRows.map(rowToBreaker),
-    frames: frameRows.map((row) => paperworkFrame(row)),
+    strings: stringRows.map((r) => ({
+      id: str(r.id),
+      projectId: str(r.project_id),
+      key: str(r.key),
+      createdAt: str(r.created_at),
+      archivedAt: str(r.archived_at) || undefined,
+    })),
+    faults: faultRows.map(rowToFault),
   };
 }
 
@@ -446,9 +545,12 @@ export async function storeListStrings(projectId: string): Promise<StringRun[]> 
 export async function storePutString(row: StringRecord): Promise<void> {
   const d = await getDriver();
   await d.run(
-    `INSERT INTO strings (id, project_id, key, created_at, archived_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (id) DO UPDATE SET archived_at = excluded.archived_at, created_at = excluded.created_at`,
-    [row.id, row.projectId, row.key, row.createdAt, row.archivedAt || null],
+    `INSERT INTO strings (id, project_id, key, created_at, archived_at, seq) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       archived_at = excluded.archived_at,
+       created_at = excluded.created_at,
+       seq = excluded.seq`,
+    [row.id, row.projectId, row.key, row.createdAt, row.archivedAt || null, await nextSeq(d)],
   );
 }
 
@@ -514,12 +616,13 @@ export async function storeAddFault(fault: Fault): Promise<void> {
   await d.run(
     `INSERT INTO faults (
       id, project_id, frame_id, string_key, frame_slot, hole, kind,
-      old_mccb, old_ml, old_ml_model, old_shunt, reason, raised_by, raised_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (id) DO UPDATE SET reason = excluded.reason`,
+      old_mccb, old_ml, old_ml_model, old_shunt, reason, raised_by, raised_at, seq
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET reason = excluded.reason, seq = excluded.seq`,
     [
       fault.id, fault.projectId, fault.frameId, fault.stringKey, fault.frameSlot, fault.hole, fault.kind,
       fault.oldMccb, fault.oldMl, fault.oldMlModel, fault.oldShunt, fault.reason, fault.raisedBy, fault.raisedAt,
+      await nextSeq(d),
     ],
   );
 }
@@ -530,22 +633,7 @@ export async function storeListFaults(projectId: string): Promise<Fault[]> {
     "SELECT * FROM faults WHERE project_id = ? ORDER BY raised_at DESC",
     [projectId],
   );
-  return rows.map((r) => ({
-    id: str(r.id),
-    projectId: str(r.project_id),
-    frameId: str(r.frame_id),
-    stringKey: str(r.string_key),
-    frameSlot: str(r.frame_slot),
-    hole: str(r.hole),
-    kind: str(r.kind) === "shunt" ? "shunt" : "unit",
-    oldMccb: str(r.old_mccb),
-    oldMl: str(r.old_ml),
-    oldMlModel: str(r.old_ml_model) === "5.2E" ? "5.2E" : str(r.old_ml_model) ? "2.2" : "",
-    oldShunt: str(r.old_shunt),
-    reason: str(r.reason),
-    raisedBy: str(r.raised_by),
-    raisedAt: str(r.raised_at),
-  }));
+  return rows.map(rowToFault);
 }
 
 export async function storeSearchBreakers(projectId: string, query: string): Promise<BreakerRow[]> {

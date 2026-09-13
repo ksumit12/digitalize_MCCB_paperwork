@@ -46,10 +46,11 @@ export type BreakerPosition = {
   torqueLoadSideConfirmed: boolean;
   micrologicSettingAmps: AmpSetting;
   micrologicSettingConfirmed: boolean;
-    mccbScannedBy?: string;
-    mccbScannedAt?: string;
-    rev?: number;
-  };
+  mccbScannedBy?: string;
+  mccbScannedAt?: string;
+  rev?: number;
+  seq?: number;
+};
 
 export type Cbsds = {
   label: CbsdsLabel;
@@ -183,6 +184,7 @@ export type Frame = {
   finishTime: string;
   createdAt: string;
   updatedAt: string;
+  seq?: number;
   installChecklist: InstallChecklist;
   cbsds: Cbsds[];
   ancillaryCircuits: AncillaryCircuits;
@@ -240,4 +242,5 @@ export type BreakerRow = {
   mlSet: number;
   updatedAt: string;
   rev?: number;
+  seq?: number;
 };

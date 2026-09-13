@@ -174,6 +174,35 @@ const OUTBOX_KEY = "mccb-outbox";
 const CURSOR_KEY = "mccb-changes-cursor";
 const SYNC_EVENT = "mccb-sync";
 
+type ChangeFeed = {
+  cursor: number;
+  frames: Frame[];
+  breakers: BreakerRow[];
+  strings: StringRecord[];
+  faults: Fault[];
+};
+
+// The cursor is a server-assigned counter, not a timestamp. Older builds stored
+// an ISO string here, which reads back as NaN and re-bootstraps.
+function readCursor(): number | null {
+  try {
+    const raw = localStorage.getItem(CURSOR_KEY);
+    if (raw == null) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCursor(value: number) {
+  try {
+    localStorage.setItem(CURSOR_KEY, String(value));
+  } catch {
+    /* private mode */
+  }
+}
+
 function emptyOutbox(): Outbox {
   return {
     frames: [],
@@ -387,7 +416,21 @@ async function flushOutbox() {
     for (const id of box.frames) {
       const frame = await db.frames.get(id);
       if (!frame) continue;
-      if (!(await apiPost({ action: "saveFrame", frame }))) next.frames.push(id);
+      const saved = await apiPostJson<{ ok: boolean; frame?: Frame }>({ action: "saveFrame", frame });
+      if (!saved.ok || !saved.data?.frame) {
+        next.frames.push(id);
+        continue;
+      }
+      // Adopt the server's seq and clock so the feed can tell later whether a
+      // remote edit is actually newer than what this device already has.
+      const current = await db.frames.get(id);
+      if (current) {
+        await db.frames.put({
+          ...current,
+          seq: saved.data.frame.seq,
+          updatedAt: saved.data.frame.updatedAt,
+        });
+      }
     }
     for (const id of box.breakers) {
       const breaker = await db.breakers.get(id);
@@ -472,52 +515,72 @@ function projectIdOf(frame: Frame) {
   return frame.projectId || DEFAULT_PROJECT_ID;
 }
 
-function newer(a?: string, b?: string) {
-  return Date.parse(a || "") > Date.parse(b || "");
-}
-
-async function applyRemoteBreaker(row: BreakerRow): Promise<boolean> {
-  const dirtyHoles = new Set(readOutbox().breakers);
-  if (dirtyHoles.has(row.id)) return false;
+async function applyRemoteBreaker(row: BreakerRow, dirtyHoles?: Set<string>): Promise<boolean> {
+  const dirty = dirtyHoles ?? new Set(readOutbox().breakers);
+  if (dirty.has(row.id)) return false;
   const local = await db.breakers.get(row.id);
-  if (local && (local.rev ?? 0) > (row.rev ?? 0)) return false;
-  if (local && (local.rev ?? 0) === (row.rev ?? 0)) {
-    if (breakerFingerprint(local) === breakerFingerprint(row)) return false;
-    if (!newer(row.updatedAt, local.updatedAt)) return false;
+  if (!local) {
+    await db.breakers.put(row);
+    return true;
+  }
+  if ((row.rev ?? 0) < (local.rev ?? 0)) return false;
+  if ((row.rev ?? 0) === (local.rev ?? 0) && breakerFingerprint(local) === breakerFingerprint(row)) {
+    return false;
   }
   await db.breakers.put(row);
   return true;
 }
 
+async function applyRemoteFrame(remote: Frame): Promise<boolean> {
+  const local = await db.frames.get(remote.id);
+  if (local && (local.seq ?? 0) >= (remote.seq ?? 0)) return false;
+  await db.frames.put(withFrameDefaults({ ...local, ...remote, cbsds: local?.cbsds || remote.cbsds }));
+  return true;
+}
+
+async function applyRemoteString(row: StringRecord, box: Outbox): Promise<boolean> {
+  if (box.deletedStrings.some((s) => s.projectId === row.projectId && s.key === row.key)) return false;
+  if (box.strings.some((s) => s.id === row.id)) return false;
+  const local = await db.strings.get(row.id);
+  if (local && Boolean(local.archivedAt) === Boolean(row.archivedAt)) return false;
+  await db.strings.put(row);
+  return true;
+}
+
 async function pullChanges(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  const since = localStorage.getItem(CURSOR_KEY) || "";
-  if (!since) return false;
-  const data = await apiGet<{ cursor: string; breakers: BreakerRow[]; frames: Frame[] }>("changes", { since });
+  const since = readCursor();
+  if (since == null) {
+    const boot = await apiGet<{ cursor: number }>("cursor");
+    if (boot) writeCursor(boot.cursor);
+    return false;
+  }
+  const data = await apiGet<ChangeFeed>("changes", { since: String(since) });
   if (!data) return false;
+
   let changed = false;
   const box = readOutbox();
   const dirtyFrames = new Set(box.frames);
+  const dirtyHoles = new Set(box.breakers);
+
   for (const frame of data.frames) {
     if (dirtyFrames.has(frame.id) || box.deletedFrames.includes(frame.id)) continue;
-    const local = await db.frames.get(frame.id);
-    if (!local || newer(frame.updatedAt, local.updatedAt)) {
-      await db.frames.put(withFrameDefaults({ ...local, ...frame, cbsds: local?.cbsds || frame.cbsds }));
-      changed = true;
-    }
+    if (await applyRemoteFrame(frame)) changed = true;
   }
   for (const row of data.breakers) {
-    if (await applyRemoteBreaker(row)) changed = true;
+    if (await applyRemoteBreaker(row, dirtyHoles)) changed = true;
   }
-  localStorage.setItem(CURSOR_KEY, data.cursor);
-  return changed;
-}
+  for (const row of data.strings) {
+    if (await applyRemoteString(row, box)) changed = true;
+  }
+  for (const fault of data.faults) {
+    if (await db.faults.get(fault.id)) continue;
+    await db.faults.put(fault);
+    changed = true;
+  }
 
-async function refreshCursor() {
-  const data = await apiGet<{ cursor: string }>("changes", { since: "" });
-  if (data?.cursor && typeof window !== "undefined") {
-    localStorage.setItem(CURSOR_KEY, data.cursor);
-  }
+  if (data.cursor > since) writeCursor(data.cursor);
+  return changed;
 }
 
 export function startBackgroundSync() {
@@ -538,8 +601,11 @@ export function startBackgroundSync() {
         let changed = false;
         if (forceFull || now - lastFullPull > 30_000) {
           lastFullPull = now;
+          // Snapshot the cursor first: anything written while the reconcile runs
+          // then still comes back through the feed instead of being skipped.
+          const boot = await apiGet<{ cursor: number }>("cursor");
           changed = await pullRemote();
-          await refreshCursor();
+          if (boot) writeCursor(boot.cursor);
         } else {
           changed = await pullChanges();
         }
@@ -568,7 +634,6 @@ export function startBackgroundSync() {
 }
 
 async function pullRemote(): Promise<boolean> {
-  const pullStartedAt = new Date().toISOString();
   const box = readOutbox();
   const dirty = new Set(box.frames);
   const seen = readSeenFrames();
@@ -655,18 +720,17 @@ async function pullRemote(): Promise<boolean> {
       for (const id of remoteIds) seen.add(id);
       for (const remote of frames) {
         if (box.deletedFrames.includes(remote.id)) continue;
-        const local = await db.frames.get(remote.id);
-        if (!dirty.has(remote.id) && (!local || newer(remote.updatedAt, local.updatedAt))) {
-          await db.frames.put(withFrameDefaults({ ...local, ...remote, cbsds: local?.cbsds || remote.cbsds }));
-          changed = true;
-        }
+        if (dirty.has(remote.id)) continue;
+        if (await applyRemoteFrame(remote)) changed = true;
       }
       const localFrames = await db.frames.toArray();
       for (const local of localFrames) {
         if (projectIdOf(local) !== pid) continue;
         if (remoteIds.has(local.id) || dirty.has(local.id)) continue;
+        if (box.deletedFrames.includes(local.id)) continue;
+        // Only ever drop a frame Neon has actually shown us before, so a slot
+        // this device just created cannot be mistaken for a remote delete.
         if (!seen.has(local.id)) continue;
-        if (!newer(pullStartedAt, local.updatedAt)) continue;
         await db.transaction("rw", db.frames, db.breakers, db.faults, async () => {
           await db.frames.delete(local.id);
           await db.breakers.where("frameId").equals(local.id).delete();
@@ -679,8 +743,9 @@ async function pullRemote(): Promise<boolean> {
 
     const breakers = await apiGet<BreakerRow[]>("listBreakers", { projectId: pid });
     if (breakers) {
+      const dirtyHoles = new Set(box.breakers);
       for (const row of breakers) {
-        if (await applyRemoteBreaker(row)) changed = true;
+        if (await applyRemoteBreaker(row, dirtyHoles)) changed = true;
       }
     }
 
@@ -779,7 +844,7 @@ export async function saveFrame(frame: Frame): Promise<void> {
         continue;
       }
       if (breakerFingerprint(local) === breakerFingerprint(row)) continue;
-      const updated = { ...row, rev: local.rev ?? 0, updatedAt: now };
+      const updated = { ...row, rev: local.rev ?? 0, seq: local.seq ?? 0, updatedAt: now };
       await db.breakers.put(updated);
       dirtyIds.push(updated.id);
     }

@@ -58,6 +58,7 @@ export function explodeBreakers(frame: Frame): BreakerRow[] {
         mlSet: b.micrologicSettingConfirmed ? 1 : 0,
         updatedAt,
         rev: b.rev ?? 0,
+        seq: b.seq ?? 0,
       });
     }
   }
@@ -82,6 +83,7 @@ export function applyBreakerRow(b: BreakerPosition, row: BreakerRow): BreakerPos
     torqueLoadSideConfirmed: Boolean(row.torqueLoad),
     micrologicSettingConfirmed: Boolean(row.mlSet),
     rev: row.rev,
+    seq: row.seq,
   };
 }
 
