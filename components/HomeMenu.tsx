@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 const LINKS = [
   { href: "/", label: "Strings", hint: "Frames on the shop floor" },
+  { href: "/progress", label: "Progress", hint: "Day, week and month figures" },
   { href: "/find", label: "Find MCCB", hint: "Serial → string · slot · hole" },
   { href: "/faults", label: "Faults", hint: "Replaced MCCB, ML, shunt" },
   { href: "/projects", label: "Projects", hint: "This job vs a new job" },

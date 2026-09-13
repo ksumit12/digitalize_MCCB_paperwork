@@ -26,6 +26,123 @@ body {
   animation: home-rise 0.5s ease-out both;
 }
 
+/* Progress page: charts and cards animate in once on mount. Remounting via a
+   React key replays them when the period changes. */
+@keyframes chart-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes chart-line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes chart-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes chart-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes chart-rail-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.chart-bar {
+  transform-origin: bottom;
+  animation: chart-bar-grow 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chart-line {
+  stroke-dasharray: 1;
+  animation: chart-line-draw 1.1s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.chart-area {
+  animation: chart-fade 0.9s ease-out 0.25s both;
+}
+
+.chart-dot {
+  transform-origin: center;
+  animation: chart-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1) 1s both;
+}
+
+.chart-slice {
+  /* Sweeps clockwise by retracting its own gap. */
+  animation: chart-slice-sweep 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes chart-slice-sweep {
+  from {
+    stroke-dasharray: 0 1000;
+  }
+}
+
+.chart-legend {
+  animation: card-rise 0.45s ease-out both;
+}
+
+.chart-rail {
+  transform-origin: left;
+  animation: chart-rail-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.card-rise {
+  animation: card-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-rise,
+  .card-rise,
+  .chart-bar,
+  .chart-line,
+  .chart-area,
+  .chart-dot,
+  .chart-slice,
+  .chart-legend,
+  .chart-rail {
+    animation: none !important;
+  }
+}
+
 input,
 select,
 textarea {
